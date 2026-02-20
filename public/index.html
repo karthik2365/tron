@@ -32,8 +32,8 @@
             width: 100%;
             height: 100%;
             background-image:
-                linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+                linear-gradient(rgba(255, 140, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 140, 0, 0.03) 1px, transparent 1px);
             background-size: 50px 50px;
             z-index: 0;
             animation: gridPulse 4s ease-in-out infinite;
@@ -54,7 +54,7 @@
         .glow-line {
             position: fixed;
             height: 1px;
-            background: linear-gradient(90deg, transparent, #00ffff, transparent);
+            background: linear-gradient(90deg, transparent, #ff8c00, transparent);
             opacity: 0.3;
             z-index: 0;
             animation: scanLine 8s linear infinite;
@@ -105,7 +105,7 @@
             font-size: 72px;
             font-weight: 900;
             letter-spacing: 12px;
-            background: linear-gradient(135deg, #00ffff, #0088ff, #00ffff);
+            background: linear-gradient(135deg, #ff8c00, #ffffff, #ff8c00);
             background-size: 200% 200%;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -132,7 +132,7 @@
             font-family: 'Chakra Petch', sans-serif;
             font-size: 14px;
             letter-spacing: 8px;
-            color: rgba(0, 255, 255, 0.5);
+            color: rgba(255, 140, 0, 0.5);
             margin-bottom: 50px;
             text-transform: uppercase;
         }
@@ -147,23 +147,23 @@
             font-weight: 400;
             letter-spacing: 3px;
             text-align: center;
-            background: rgba(0, 255, 255, 0.05);
-            border: 1px solid rgba(0, 255, 255, 0.25);
-            color: #00ffff;
+            background: rgba(255, 140, 0, 0.05);
+            border: 1px solid rgba(255, 140, 0, 0.25);
+            color: #ff8c00;
             outline: none;
             transition: all 0.3s ease;
             text-transform: uppercase;
         }
 
         input::placeholder {
-            color: rgba(0, 255, 255, 0.3);
+            color: rgba(255, 140, 0, 0.3);
             letter-spacing: 4px;
         }
 
         input:focus {
-            border-color: #00ffff;
-            background: rgba(0, 255, 255, 0.1);
-            box-shadow: 0 0 25px rgba(0, 255, 255, 0.15), inset 0 0 25px rgba(0, 255, 255, 0.05);
+            border-color: #ff8c00;
+            background: rgba(255, 140, 0, 0.1);
+            box-shadow: 0 0 25px rgba(255, 140, 0, 0.15), inset 0 0 25px rgba(255, 140, 0, 0.05);
         }
 
         /* ── Buttons ── */
@@ -177,8 +177,8 @@
             letter-spacing: 3px;
             cursor: pointer;
             background: transparent;
-            border: 1px solid rgba(0, 255, 255, 0.4);
-            color: #00ffff;
+            border: 1px solid rgba(255, 140, 0, 0.4);
+            color: #ff8c00;
             position: relative;
             overflow: hidden;
             transition: all 0.3s ease;
@@ -192,13 +192,13 @@
             left: -100%;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.15), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255, 140, 0, 0.15), transparent);
             transition: left 0.5s ease;
         }
 
         .btn:hover {
-            border-color: #00ffff;
-            box-shadow: 0 0 30px rgba(0, 255, 255, 0.2), inset 0 0 30px rgba(0, 255, 255, 0.05);
+            border-color: #ff8c00;
+            box-shadow: 0 0 30px rgba(255, 140, 0, 0.2), inset 0 0 30px rgba(255, 140, 0, 0.05);
             transform: translateY(-2px);
         }
 
@@ -211,8 +211,8 @@
         }
 
         .btn-primary {
-            background: rgba(0, 255, 255, 0.1);
-            border-color: #00ffff;
+            background: rgba(255, 140, 0, 0.1);
+            border-color: #ff8c00;
         }
 
         /* ── Sections ── */
@@ -230,14 +230,14 @@
             font-family: 'Chakra Petch', sans-serif;
             font-size: 28px;
             letter-spacing: 6px;
-            color: #00ffff;
+            color: #ff8c00;
             margin: 10px 0;
         }
 
         .room-label {
             font-size: 13px;
             letter-spacing: 5px;
-            color: rgba(0, 255, 255, 0.4);
+            color: rgba(255, 140, 0, 0.4);
             text-transform: uppercase;
         }
 
@@ -312,8 +312,8 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            border: 1px solid rgba(0, 255, 255, 0.2);
-            box-shadow: 0 0 60px rgba(0, 255, 255, 0.08);
+            border: 1px solid rgba(255, 140, 0, 0.2);
+            box-shadow: 0 0 60px rgba(255, 140, 0, 0.08);
         }
 
         /* ── Scoreboard ── */
@@ -366,9 +366,9 @@
             font-family: 'Chakra Petch', sans-serif;
             font-size: 120px;
             font-weight: 900;
-            color: #00ffff;
+            color: #ff8c00;
             z-index: 30;
-            text-shadow: 0 0 80px rgba(0, 255, 255, 0.5);
+            text-shadow: 0 0 80px rgba(255, 140, 0, 0.5);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.2s ease;
@@ -428,7 +428,7 @@
             font-family: 'Audiowide', sans-serif;
             font-size: 56px;
             font-weight: 900;
-            background: linear-gradient(135deg, #00ffff, #ffaa00);
+            background: linear-gradient(135deg, #ff8c00, #ffffff);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -453,7 +453,7 @@
             position: absolute;
             width: 40px;
             height: 40px;
-            border-color: rgba(0, 255, 255, 0.3);
+            border-color: rgba(255, 140, 0, 0.3);
             border-style: solid;
             z-index: 15;
         }
@@ -490,7 +490,7 @@
             font-family: 'Chakra Petch', sans-serif;
             font-size: 11px;
             letter-spacing: 3px;
-            color: rgba(0, 255, 255, 0.4);
+            color: rgba(255, 140, 0, 0.4);
             z-index: 20;
             text-transform: uppercase;
         }
@@ -504,7 +504,7 @@
             font-family: 'Chakra Petch', sans-serif;
             font-size: 10px;
             letter-spacing: 3px;
-            color: rgba(0, 255, 255, 0.25);
+            color: rgba(255, 140, 0, 0.25);
             z-index: 20;
             text-transform: uppercase;
             text-align: center;
@@ -514,7 +514,7 @@
         .divider {
             width: 80px;
             height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.3), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255, 140, 0, 0.3), transparent);
             margin: 20px auto;
         }
 
@@ -531,7 +531,7 @@
         .speed-label {
             font-size: 9px;
             letter-spacing: 3px;
-            color: rgba(0, 255, 255, 0.35);
+            color: rgba(255, 140, 0, 0.35);
             text-transform: uppercase;
             margin-bottom: 4px;
         }
@@ -539,7 +539,7 @@
         .speed-value {
             font-size: 22px;
             font-weight: 700;
-            color: #00ffff;
+            color: #ff8c00;
             letter-spacing: 2px;
             transition: color 0.3s ease, text-shadow 0.3s ease;
         }
@@ -570,7 +570,7 @@
         .timer-value {
             font-size: 11px;
             letter-spacing: 2px;
-            color: rgba(0, 255, 255, 0.3);
+            color: rgba(255, 140, 0, 0.3);
             margin-top: 6px;
         }
 
@@ -586,7 +586,7 @@
 
         .speed-bar-fill {
             height: 100%;
-            background: linear-gradient(90deg, #00ffff, #ffaa00, #ff2e63);
+            background: linear-gradient(90deg, #ff8c00, #ffaa00, #ff2e63);
             border-radius: 2px;
             transition: width 0.4s ease;
         }
@@ -695,20 +695,72 @@
         let lastCountdown = -1;
         let currentWinner = null;
 
-        // Track which keys are held down
+        // ── STATIC GRID (rendered once, never redrawn) ──
+        const gridCanvas = document.createElement('canvas');
+        gridCanvas.width = 1400;
+        gridCanvas.height = 900;
+        const gridCtx = gridCanvas.getContext('2d');
+        gridCtx.strokeStyle = "rgba(255, 140, 0, 0.04)";
+        gridCtx.lineWidth = 0.5;
+        gridCtx.beginPath();
+        for (let x = 0; x < 1400; x += 50) { gridCtx.moveTo(x, 0); gridCtx.lineTo(x, 900); }
+        for (let y = 0; y < 900; y += 50) { gridCtx.moveTo(0, y); gridCtx.lineTo(1400, y); }
+        gridCtx.stroke();
+
+        // ── TRAIL CANVAS (offscreen cache for all trails) ──
+        const trailCanvas = document.createElement('canvas');
+        trailCanvas.width = 1400;
+        trailCanvas.height = 900;
+        const trailCtx = trailCanvas.getContext('2d');
+        let trailDirty = false;
+
+        // Client-side trail storage: flat arrays matching server format
+        // clientTrails[id] = { x: Float32Array, y: Float32Array, len: 0, cap: N }
+        const clientTrails = {};
+        const TRAIL_CAP = 700;
+
+        function ensureTrail(id) {
+            if (!clientTrails[id]) {
+                clientTrails[id] = {
+                    x: new Float32Array(TRAIL_CAP),
+                    y: new Float32Array(TRAIL_CAP),
+                    len: 0,
+                };
+            }
+            return clientTrails[id];
+        }
+
+        // ── PRE-RENDERED HEAD GLOW (avoid per-frame shadowBlur) ──
+        const glowCache = {};
+        function getGlowImage(color) {
+            if (glowCache[color]) return glowCache[color];
+            const size = 48;
+            const c = document.createElement('canvas');
+            c.width = size; c.height = size;
+            const g = c.getContext('2d');
+            g.shadowBlur = 20;
+            g.shadowColor = color;
+            g.fillStyle = color;
+            g.beginPath();
+            g.arc(size / 2, size / 2, 5, 0, Math.PI * 2);
+            g.fill();
+            // Second pass for stronger glow
+            g.fill();
+            glowCache[color] = c;
+            return c;
+        }
+
         const keysDown = new Set();
 
         // ── CONNECT ──
         function connect() {
             const protocol = location.protocol === "https:" ? "wss:" : "ws:";
             ws = new WebSocket(protocol + "//" + location.host);
-
-            ws.onopen = () => console.log("Connected to server");
+            ws.onopen = () => console.log("Connected");
             ws.onclose = () => { console.log("Disconnected"); setTimeout(connect, 2000); };
             ws.onerror = (e) => console.error("WS error:", e);
             ws.onmessage = handleMessage;
         }
-
         connect();
 
         // ── ERROR ──
@@ -718,12 +770,14 @@
             setTimeout(() => errorToast.classList.remove("show"), 3000);
         }
 
+        // ── Scoreboard throttle ──
+        let lastScoreHtml = "";
+
         // ── MESSAGE HANDLER ──
         function handleMessage(event) {
             const data = JSON.parse(event.data);
 
             if (data.type === "init") myId = data.id;
-
             if (data.type === "error") showError(data.message);
 
             if (data.type === "roomCreated") {
@@ -745,24 +799,131 @@
                 gameArea.style.display = "block";
                 isGameActive = true;
                 speedHud.style.display = "block";
-                // Fade out controls help after 8 seconds
                 setTimeout(() => { controlsHelp.style.opacity = "0"; }, 8000);
             }
 
             if (data.type === "state") {
-                players = data.players;
+                const dp = data.p; // compact players
+
+                if (data.f) {
+                    // Full sync: reset all trails
+                    trailCtx.clearRect(0, 0, 1400, 900);
+                    for (let id in clientTrails) {
+                        clientTrails[id].len = 0;
+                    }
+                    for (let id in dp) {
+                        const trail = ensureTrail(id);
+                        const flat = dp[id].t;
+                        const pts = flat.length / 2;
+                        trail.len = 0;
+                        for (let i = 0; i < pts; i++) {
+                            trail.x[i] = flat[i * 2];
+                            trail.y[i] = flat[i * 2 + 1];
+                        }
+                        trail.len = pts;
+                    }
+                    trailDirty = true;
+                } else {
+                    // Delta: append new trail points & draw to offscreen
+                    for (let id in dp) {
+                        const p = dp[id];
+                        const flat = p.t;
+                        const newPts = flat.length / 2;
+
+                        if (newPts > 0) {
+                            const trail = ensureTrail(id);
+
+                            // Draw new segments to offscreen trail canvas
+                            trailCtx.strokeStyle = p.c;
+                            trailCtx.lineWidth = 3;
+                            trailCtx.globalAlpha = p.al ? 0.6 : 0.12;
+                            trailCtx.lineCap = 'round';
+                            trailCtx.lineJoin = 'round';
+                            trailCtx.beginPath();
+                            if (trail.len > 0) {
+                                trailCtx.moveTo(trail.x[trail.len - 1], trail.y[trail.len - 1]);
+                            } else {
+                                trailCtx.moveTo(flat[0], flat[1]);
+                            }
+                            for (let i = 0; i < newPts; i++) {
+                                trailCtx.lineTo(flat[i * 2], flat[i * 2 + 1]);
+                            }
+                            trailCtx.stroke();
+
+                            // White core
+                            trailCtx.lineWidth = 1.5;
+                            trailCtx.globalAlpha = p.al ? 0.85 : 0.12;
+                            trailCtx.strokeStyle = '#ffffff';
+                            trailCtx.beginPath();
+                            if (trail.len > 0) {
+                                trailCtx.moveTo(trail.x[trail.len - 1], trail.y[trail.len - 1]);
+                            } else {
+                                trailCtx.moveTo(flat[0], flat[1]);
+                            }
+                            for (let i = 0; i < newPts; i++) {
+                                trailCtx.lineTo(flat[i * 2], flat[i * 2 + 1]);
+                            }
+                            trailCtx.stroke();
+                            trailCtx.globalAlpha = 1;
+
+                            // Append to local trail buffer
+                            for (let i = 0; i < newPts; i++) {
+                                if (trail.len < TRAIL_CAP) {
+                                    trail.x[trail.len] = flat[i * 2];
+                                    trail.y[trail.len] = flat[i * 2 + 1];
+                                    trail.len++;
+                                }
+                            }
+                        }
+
+                        // Trim if server trail is shorter (circular buffer wrapped)
+                        const serverLen = dp[id].tl || 0;
+                        const trail = ensureTrail(id);
+                        if (trail.len > serverLen + 30) {
+                            const excess = trail.len - serverLen;
+                            // Shift typed array contents
+                            trail.x.copyWithin(0, excess);
+                            trail.y.copyWithin(0, excess);
+                            trail.len -= excess;
+                            trailDirty = true;
+                        }
+                    }
+
+                    // Remove trails for disconnected players
+                    for (let id in clientTrails) {
+                        if (!dp[id]) {
+                            delete clientTrails[id];
+                            trailDirty = true;
+                        }
+                    }
+                }
+
+                // Unpack compact player format to our rendering format
+                players = {};
+                for (let id in dp) {
+                    players[id] = {
+                        x: dp[id].x,
+                        y: dp[id].y,
+                        angle: dp[id].a,
+                        alive: dp[id].al,
+                        score: dp[id].s,
+                        color: dp[id].c,
+                        name: dp[id].n,
+                    };
+                }
+
                 updateScore();
 
                 // Countdown
-                if (data.center && data.countdown > 0) {
-                    if (data.countdown !== lastCountdown) {
-                        lastCountdown = data.countdown;
-                        countdownEl.textContent = data.countdown;
+                if (data.cn && data.cd > 0) {
+                    if (data.cd !== lastCountdown) {
+                        lastCountdown = data.cd;
+                        countdownEl.textContent = data.cd;
                         countdownEl.classList.remove("visible");
                         void countdownEl.offsetWidth;
                         countdownEl.classList.add("visible");
                     }
-                } else if (data.center && data.countdown === 0) {
+                } else if (data.cn && data.cd === 0) {
                     countdownEl.textContent = "GO!";
                     countdownEl.classList.add("visible");
                     setTimeout(() => {
@@ -774,9 +935,9 @@
                 }
 
                 // Winner
-                if (data.winner && data.winner !== currentWinner) {
-                    currentWinner = data.winner;
-                    winnerNameEl.textContent = data.winner;
+                if (data.w && data.w !== currentWinner) {
+                    currentWinner = data.w;
+                    winnerNameEl.textContent = data.w;
                     winnerOverlay.classList.add("show");
                     setTimeout(() => {
                         winnerOverlay.classList.remove("show");
@@ -785,20 +946,17 @@
                 }
 
                 // Speed + Timer HUD
-                if (data.speed !== undefined) {
-                    const spd = data.speed;
+                if (data.sp !== undefined) {
+                    const spd = data.sp;
                     speedValueEl.textContent = spd.toFixed(1) + 'x';
-                    // Color coding based on speed
                     speedValueEl.className = 'speed-value';
                     if (spd >= 6) speedValueEl.classList.add('danger');
                     else if (spd >= 4) speedValueEl.classList.add('fast');
-                    // Bar fill (2.5 to 8 range)
-                    const pct = Math.min(((spd - 2.5) / (8 - 2.5)) * 100, 100);
-                    speedBar.style.width = pct + '%';
+                    speedBar.style.width = Math.min(((spd - 2.5) / 5.5) * 100, 100) + '%';
                 }
-                if (data.elapsed !== undefined) {
-                    const mins = Math.floor(data.elapsed / 60).toString().padStart(2, '0');
-                    const secs = (data.elapsed % 60).toString().padStart(2, '0');
+                if (data.el !== undefined) {
+                    const mins = Math.floor(data.el / 60).toString().padStart(2, '0');
+                    const secs = (data.el % 60).toString().padStart(2, '0');
                     timerValueEl.textContent = mins + ':' + secs;
                 }
             }
@@ -840,30 +998,23 @@
             ws.send(JSON.stringify({ type: "start" }));
         };
 
-        // ── CONTROLS: Left/Right Steering ──
-        // The player always moves forward. Left/Right keys steer.
-        // We send turn direction: -1 (left), 0 (straight), 1 (right)
-
+        // ── CONTROLS ──
         function updateTurnDirection() {
             if (!isGameActive) return;
-
             const left = keysDown.has("ArrowLeft") || keysDown.has("a") || keysDown.has("A");
             const right = keysDown.has("ArrowRight") || keysDown.has("d") || keysDown.has("D");
-
             let dir = 0;
             if (left && !right) dir = -1;
             if (right && !left) dir = 1;
-
             ws.send(JSON.stringify({ type: "turn", dir }));
         }
 
         document.addEventListener("keydown", (e) => {
             if (!isGameActive) return;
-            const key = e.key;
-            if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(key)) {
+            if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(e.key)) {
                 e.preventDefault();
-                if (!keysDown.has(key)) {
-                    keysDown.add(key);
+                if (!keysDown.has(e.key)) {
+                    keysDown.add(e.key);
                     updateTurnDirection();
                 }
             }
@@ -871,164 +1022,131 @@
 
         document.addEventListener("keyup", (e) => {
             if (!isGameActive) return;
-            const key = e.key;
-            if (keysDown.has(key)) {
-                keysDown.delete(key);
+            if (keysDown.has(e.key)) {
+                keysDown.delete(e.key);
                 updateTurnDirection();
             }
         });
 
-        // ── SCOREBOARD ──
+        // ── SCOREBOARD (throttled DOM updates) ──
         function updateScore() {
             let html = "";
             for (let id in players) {
                 const p = players[id];
                 const isMe = id === myId;
-                html += `
-          <div class="score-entry ${isMe ? "score-you" : ""}">
-            <span class="score-name" style="color:${p.color}">${isMe ? "YOU" : p.name}</span>
-            <span class="score-value" style="color:${p.color}">${p.score}</span>
-            <span class="score-dot" style="background:${p.color};${p.alive ? "" : "opacity:0.2"}"></span>
-          </div>`;
+                html += `<div class="score-entry ${isMe ? "score-you" : ""}">
+                    <span class="score-name" style="color:${p.color}">${isMe ? "YOU" : p.name}</span>
+                    <span class="score-value" style="color:${p.color}">${p.score}</span>
+                    <span class="score-dot" style="background:${p.color};${p.alive ? "" : "opacity:0.2"}"></span>
+                </div>`;
             }
-            scoreBoard.innerHTML = html;
-        }
-
-        // ── GRID ──
-        function drawGrid() {
-            ctx.strokeStyle = "rgba(0, 255, 255, 0.04)";
-            ctx.lineWidth = 0.5;
-            for (let x = 0; x < 1400; x += 50) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, 900);
-                ctx.stroke();
-            }
-            for (let y = 0; y < 900; y += 50) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(1400, y);
-                ctx.stroke();
+            // Only update DOM if content changed
+            if (html !== lastScoreHtml) {
+                lastScoreHtml = html;
+                scoreBoard.innerHTML = html;
             }
         }
 
-        // ── DRAW ──
+        // ── REBUILD TRAIL CANVAS (only on trim events) ──
+        function rebuildTrailCanvas() {
+            trailCtx.clearRect(0, 0, 1400, 900);
+            for (let id in clientTrails) {
+                const trail = clientTrails[id];
+                const p = players[id];
+                if (!p || trail.len < 2) continue;
+
+                trailCtx.strokeStyle = p.color;
+                trailCtx.lineWidth = 3;
+                trailCtx.globalAlpha = p.alive ? 0.6 : 0.12;
+                trailCtx.lineCap = 'round';
+                trailCtx.lineJoin = 'round';
+                trailCtx.beginPath();
+                trailCtx.moveTo(trail.x[0], trail.y[0]);
+                for (let i = 1; i < trail.len; i++) {
+                    trailCtx.lineTo(trail.x[i], trail.y[i]);
+                }
+                trailCtx.stroke();
+
+                trailCtx.lineWidth = 1.5;
+                trailCtx.globalAlpha = p.alive ? 0.85 : 0.12;
+                trailCtx.strokeStyle = '#ffffff';
+                trailCtx.beginPath();
+                trailCtx.moveTo(trail.x[0], trail.y[0]);
+                for (let i = 1; i < trail.len; i++) {
+                    trailCtx.lineTo(trail.x[i], trail.y[i]);
+                }
+                trailCtx.stroke();
+            }
+            trailCtx.globalAlpha = 1;
+            trailDirty = false;
+        }
+
+        // ── MAIN DRAW LOOP ──
         function draw() {
-            // Dark fade for glow persistence
-            ctx.fillStyle = "rgba(10, 10, 15, 0.92)";
+            // Clear
+            ctx.fillStyle = "#0a0a0f";
             ctx.fillRect(0, 0, 1400, 900);
 
-            drawGrid();
+            // Static grid (pre-rendered, just stamp it)
+            ctx.drawImage(gridCanvas, 0, 0);
 
+            // Rebuild trail cache if needed (trim events)
+            if (trailDirty) rebuildTrailCanvas();
+
+            // Stamp cached trails
+            ctx.drawImage(trailCanvas, 0, 0);
+
+            // Draw player heads (NO shadowBlur — use pre-rendered glow image)
             for (let id in players) {
                 const p = players[id];
 
-                // Trail — smooth curve
-                if (p.trail && p.trail.length > 1) {
-                    // Outer glow
-                    ctx.save();
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = p.color;
-                    ctx.strokeStyle = p.color;
-                    ctx.lineWidth = 3;
-                    ctx.globalAlpha = p.alive ? 0.6 : 0.12;
-                    ctx.lineCap = "round";
-                    ctx.lineJoin = "round";
-
-                    ctx.beginPath();
-                    ctx.moveTo(p.trail[0].x, p.trail[0].y);
-                    for (let i = 1; i < p.trail.length; i++) {
-                        ctx.lineTo(p.trail[i].x, p.trail[i].y);
-                    }
-                    ctx.stroke();
-
-                    // Bright core
-                    ctx.shadowBlur = 0;
-                    ctx.lineWidth = 1.5;
-                    ctx.globalAlpha = p.alive ? 0.9 : 0.15;
-                    ctx.strokeStyle = "#ffffff";
-
-                    ctx.beginPath();
-                    ctx.moveTo(p.trail[0].x, p.trail[0].y);
-                    for (let i = 1; i < p.trail.length; i++) {
-                        ctx.lineTo(p.trail[i].x, p.trail[i].y);
-                    }
-                    ctx.stroke();
-
-                    ctx.restore();
-                }
-
-                // Player head
                 if (p.alive) {
-                    ctx.save();
-
-                    // Head glow
-                    ctx.shadowBlur = 25;
-                    ctx.shadowColor = p.color;
-
-                    // Direction indicator (small triangle)
                     const angle = p.angle || 0;
                     const hx = p.x;
                     const hy = p.y;
                     const size = 7;
 
+                    // Glow image (pre-rendered, no shadowBlur per frame)
+                    const glow = getGlowImage(p.color);
+                    ctx.drawImage(glow, hx - 24, hy - 24);
+
+                    // Triangle head
                     ctx.fillStyle = p.color;
                     ctx.beginPath();
-                    ctx.moveTo(
-                        hx + Math.cos(angle) * size,
-                        hy + Math.sin(angle) * size
-                    );
-                    ctx.lineTo(
-                        hx + Math.cos(angle + 2.4) * size * 0.6,
-                        hy + Math.sin(angle + 2.4) * size * 0.6
-                    );
-                    ctx.lineTo(
-                        hx + Math.cos(angle - 2.4) * size * 0.6,
-                        hy + Math.sin(angle - 2.4) * size * 0.6
-                    );
+                    ctx.moveTo(hx + Math.cos(angle) * size, hy + Math.sin(angle) * size);
+                    ctx.lineTo(hx + Math.cos(angle + 2.4) * size * 0.6, hy + Math.sin(angle + 2.4) * size * 0.6);
+                    ctx.lineTo(hx + Math.cos(angle - 2.4) * size * 0.6, hy + Math.sin(angle - 2.4) * size * 0.6);
                     ctx.closePath();
                     ctx.fill();
 
-                    // Bright center dot
-                    ctx.shadowBlur = 0;
+                    // Center dot
                     ctx.fillStyle = "#fff";
                     ctx.beginPath();
                     ctx.arc(hx, hy, 2, 0, Math.PI * 2);
                     ctx.fill();
 
-                    ctx.restore();
-
-                    // Name
-                    ctx.save();
+                    // Name label
                     ctx.fillStyle = p.color;
                     ctx.font = "bold 11px 'Chakra Petch', sans-serif";
                     ctx.textAlign = "center";
                     ctx.fillText(id === myId ? "YOU" : p.name, hx, hy - 16);
-                    ctx.restore();
-
                 } else {
-                    // Death marker
-                    ctx.save();
+                    // Death X marker
                     ctx.globalAlpha = 0.4;
-
-                    // X mark
-                    const dx = p.x;
-                    const dy = p.y;
                     ctx.strokeStyle = p.color;
                     ctx.lineWidth = 2;
                     ctx.beginPath();
-                    ctx.moveTo(dx - 5, dy - 5);
-                    ctx.lineTo(dx + 5, dy + 5);
-                    ctx.moveTo(dx + 5, dy - 5);
-                    ctx.lineTo(dx - 5, dy + 5);
+                    ctx.moveTo(p.x - 5, p.y - 5);
+                    ctx.lineTo(p.x + 5, p.y + 5);
+                    ctx.moveTo(p.x + 5, p.y - 5);
+                    ctx.lineTo(p.x - 5, p.y + 5);
                     ctx.stroke();
-
-                    ctx.restore();
+                    ctx.globalAlpha = 1;
                 }
             }
 
             // Border
-            ctx.strokeStyle = "rgba(0, 255, 255, 0.15)";
+            ctx.strokeStyle = "rgba(255, 140, 0, 0.15)";
             ctx.lineWidth = 1;
             ctx.strokeRect(0, 0, 1400, 900);
 

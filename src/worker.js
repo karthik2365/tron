@@ -1,15 +1,12 @@
 // ── Cloudflare Worker Entry Point ──
 export default {
     async fetch(request, env) {
-        // Handle WebSocket upgrade → route to Durable Object
         const upgradeHeader = request.headers.get("Upgrade");
         if (upgradeHeader && upgradeHeader.toLowerCase() === "websocket") {
             const id = env.GAME_SERVER.idFromName("main");
             const obj = env.GAME_SERVER.get(id);
             return obj.fetch(request);
         }
-
-        // Everything else → serve static assets
         return env.ASSETS.fetch(request);
     },
 };
@@ -22,17 +19,24 @@ const SPEED_INCREMENT = 0.5;
 const SPEED_INTERVAL = 10;
 const MAX_SPEED = 8;
 const TURN_SPEED = 0.045;
-const TRAIL_MAX = 5000;
+const TRAIL_MAX = 600;
 const COLLISION_RADIUS = 4;
+const COLLISION_RADIUS_SQ = COLLISION_RADIUS * COLLISION_RADIUS;
 const COLLISION_SKIP_OWN = 20;
 
-const COLORS = ["#00ffff", "#ff2e63", "#00ff88", "#ffaa00"];
+const BROADCAST_EVERY = 4; // ~15fps broadcast
+
+const COLORS = ["#ff8c00", "#00bfff", "#ff2e63", "#39ff14", "#e040fb", "#ffeb3b", "#00e5ff", "#ff6e40"];
 
 const spawnConfigs = [
     { x: 250, y: 200, angle: Math.PI * 0.25 },
     { x: 1150, y: 200, angle: Math.PI * 0.75 },
     { x: 1150, y: 700, angle: Math.PI * 1.25 },
     { x: 250, y: 700, angle: Math.PI * 1.75 },
+    { x: 700, y: 100, angle: Math.PI * 0.5 },
+    { x: 700, y: 800, angle: Math.PI * 1.5 },
+    { x: 100, y: 450, angle: 0 },
+    { x: 1300, y: 450, angle: Math.PI },
 ];
 
 // ── Durable Object: GameServer ──
@@ -41,8 +45,9 @@ export class GameServer {
         this.state = state;
         this.env = env;
         this.rooms = {};
-        this.sessions = new Map(); // ws → { id, room }
+        this.sessions = new Map();
         this.gameLoopInterval = null;
+        this.tickCounter = 0;
     }
 
     async fetch(request) {
@@ -52,36 +57,27 @@ export class GameServer {
         return new Response(null, { status: 101, webSocket: client });
     }
 
-    // ── Session Handling ──
     handleSession(ws) {
         ws.accept();
-
         const id = Math.random().toString(36).substr(2, 9);
         const session = { id, ws, room: null };
         this.sessions.set(ws, session);
 
         ws.send(JSON.stringify({ type: "init", id }));
 
-        // Start game loop if not already running
         if (!this.gameLoopInterval) {
             this.gameLoopInterval = setInterval(() => this.gameLoop(), 1000 / 60);
         }
 
         ws.addEventListener("message", (event) => {
             let data;
-            try {
-                data = JSON.parse(event.data);
-            } catch (e) {
-                return;
-            }
+            try { data = JSON.parse(event.data); } catch (e) { return; }
             this.handleMessage(session, data);
         });
 
         ws.addEventListener("close", () => {
             this.handleClose(session);
             this.sessions.delete(ws);
-
-            // Stop game loop if no sessions left
             if (this.sessions.size === 0 && this.gameLoopInterval) {
                 clearInterval(this.gameLoopInterval);
                 this.gameLoopInterval = null;
@@ -94,11 +90,9 @@ export class GameServer {
         });
     }
 
-    // ── Message Router ──
     handleMessage(session, data) {
         const { id, ws } = session;
 
-        // HOST
         if (data.type === "create") {
             const code = this.generateRoomCode();
             this.rooms[code] = {
@@ -111,6 +105,7 @@ export class GameServer {
                 countdown: 0,
                 roundStartTime: null,
                 currentSpeed: BASE_SPEED,
+                needsFullSync: false,
             };
             session.room = code;
             this.rooms[code].players[id] = this.createPlayer(id, 0, data.name);
@@ -118,7 +113,6 @@ export class GameServer {
             this.broadcastPlayerList(code);
         }
 
-        // JOIN
         if (data.type === "join") {
             const code = data.code;
             if (!this.rooms[code]) {
@@ -126,36 +120,38 @@ export class GameServer {
                 return;
             }
             const playerCount = Object.keys(this.rooms[code].players).length;
-            if (playerCount >= 4) {
-                ws.send(JSON.stringify({ type: "error", message: "Room is full (max 4)" }));
-                return;
-            }
-            if (this.rooms[code].gameStarted) {
-                ws.send(JSON.stringify({ type: "error", message: "Game already in progress" }));
+            if (playerCount >= 8) {
+                ws.send(JSON.stringify({ type: "error", message: "Room is full (max 8)" }));
                 return;
             }
 
-            this.rooms[code].players[id] = this.createPlayer(id, playerCount, data.name);
+            const newPlayer = this.createPlayer(id, playerCount, data.name);
+            if (this.rooms[code].gameStarted) {
+                newPlayer.alive = false;
+            }
+
+            this.rooms[code].players[id] = newPlayer;
             session.room = code;
             ws.send(JSON.stringify({ type: "joined", code }));
+
+            if (this.rooms[code].gameStarted) {
+                ws.send(JSON.stringify({ type: "gameStart" }));
+                this.rooms[code].needsFullSync = true;
+            }
             this.broadcastPlayerList(code);
         }
 
-        // START
         if (data.type === "start") {
             const room = this.rooms[session.room];
             if (!room) return;
-
-            const playerCount = Object.keys(room.players).length;
-            if (playerCount < 2) {
-                ws.send(JSON.stringify({ type: "error", message: "Need at least 2 players to start!" }));
+            if (Object.keys(room.players).length < 2) {
+                ws.send(JSON.stringify({ type: "error", message: "Need at least 2 players!" }));
                 return;
             }
             if (id !== room.hostId) {
                 ws.send(JSON.stringify({ type: "error", message: "Only the host can start" }));
                 return;
             }
-
             room.gameStarted = true;
             this.broadcastToRoom(session.room, { type: "gameStart" });
             this.startCountdown(room, () => {
@@ -164,7 +160,6 @@ export class GameServer {
             });
         }
 
-        // TURNING
         if (data.type === "turn") {
             const room = this.rooms[session.room];
             if (!room) return;
@@ -176,7 +171,6 @@ export class GameServer {
         }
     }
 
-    // ── Close Handler ──
     handleClose(session) {
         const room = this.rooms[session.room];
         if (room) {
@@ -189,7 +183,6 @@ export class GameServer {
         }
     }
 
-    // ── Helpers ──
     generateRoomCode() {
         let code;
         do {
@@ -198,6 +191,7 @@ export class GameServer {
         return code;
     }
 
+    // Flat array trail storage (matching server.js)
     createPlayer(id, index, name) {
         return {
             id,
@@ -206,7 +200,11 @@ export class GameServer {
             y: CANVAS_H / 2,
             angle: 0,
             turning: 0,
-            trail: [],
+            trailX: new Float64Array(TRAIL_MAX),
+            trailY: new Float64Array(TRAIL_MAX),
+            trailLen: 0,
+            trailStart: 0,
+            trailSentCount: 0,
             alive: true,
             score: 0,
             color: COLORS[index % COLORS.length],
@@ -221,37 +219,75 @@ export class GameServer {
         return Math.min(BASE_SPEED + boosts * SPEED_INCREMENT, MAX_SPEED);
     }
 
+    trailPush(p, x, y) {
+        if (p.trailLen < TRAIL_MAX) {
+            const idx = (p.trailStart + p.trailLen) % TRAIL_MAX;
+            p.trailX[idx] = x;
+            p.trailY[idx] = y;
+            p.trailLen++;
+        } else {
+            p.trailX[p.trailStart] = x;
+            p.trailY[p.trailStart] = y;
+            p.trailStart = (p.trailStart + 1) % TRAIL_MAX;
+            if (p.trailSentCount > 0) p.trailSentCount--;
+        }
+    }
+
     movePlayer(p, speed) {
         p.angle += p.turning * TURN_SPEED;
         p.x += Math.cos(p.angle) * speed;
         p.y += Math.sin(p.angle) * speed;
-
-        p.trail.push({ x: p.x, y: p.y });
-        if (p.trail.length > TRAIL_MAX) p.trail.shift();
-
+        this.trailPush(p, p.x, p.y);
         if (p.x < 0 || p.x > CANVAS_W || p.y < 0 || p.y > CANVAS_H) {
             p.alive = false;
         }
     }
 
-    checkCollision(p, players) {
-        for (let id in players) {
-            const other = players[id];
-            if (!other.alive && id !== p.id) continue;
+    checkCollisions(players) {
+        const playerIds = Object.keys(players);
+        const aliveList = [];
+        for (let k = 0; k < playerIds.length; k++) {
+            const p = players[playerIds[k]];
+            if (p.alive) aliveList.push(p);
+        }
 
-            const trail = other.trail;
-            const end = id === p.id ? trail.length - COLLISION_SKIP_OWN : trail.length - 2;
+        for (let a = 0; a < aliveList.length; a++) {
+            const p = aliveList[a];
+            const px = p.x;
+            const py = p.y;
+            let hit = false;
 
-            for (let i = 0; i < end; i++) {
-                const t = trail[i];
-                const dx = p.x - t.x;
-                const dy = p.y - t.y;
-                if (dx * dx + dy * dy < COLLISION_RADIUS * COLLISION_RADIUS) {
-                    return true;
+            for (let k = 0; k < playerIds.length && !hit; k++) {
+                const other = players[playerIds[k]];
+                const isSelf = other.id === p.id;
+                if (!other.alive && !isSelf) continue;
+
+                const len = other.trailLen;
+                const end = isSelf ? len - COLLISION_SKIP_OWN : len - 2;
+
+                for (let i = 0; i < end; i++) {
+                    const idx = (other.trailStart + i) % TRAIL_MAX;
+                    const dx = px - other.trailX[idx];
+                    const dy = py - other.trailY[idx];
+                    if (dx * dx + dy * dy < COLLISION_RADIUS_SQ) {
+                        hit = true;
+                        break;
+                    }
                 }
             }
+
+            if (hit) p.alive = false;
         }
-        return false;
+    }
+
+    getTrailSlice(p, fromIndex, toIndex) {
+        const result = [];
+        for (let i = fromIndex; i < toIndex; i++) {
+            const idx = (p.trailStart + i) % TRAIL_MAX;
+            result.push(Math.round(p.trailX[idx] * 10) / 10);
+            result.push(Math.round(p.trailY[idx] * 10) / 10);
+        }
+        return result;
     }
 
     startRound(room) {
@@ -263,13 +299,16 @@ export class GameServer {
             p.y = spawn.y;
             p.angle = spawn.angle;
             p.turning = 0;
-            p.trail = [];
+            p.trailLen = 0;
+            p.trailStart = 0;
+            p.trailSentCount = 0;
             p.alive = true;
             i++;
         }
         room.roundActive = true;
         room.countdown = 0;
         room.roundStartTime = Date.now();
+        room.needsFullSync = true;
     }
 
     startCountdown(room, callback) {
@@ -300,72 +339,66 @@ export class GameServer {
         const msg = JSON.stringify(data);
         for (const [ws, session] of this.sessions) {
             if (session.room === code) {
-                try {
-                    ws.send(msg);
-                } catch (e) {
-                    // Client disconnected
-                }
+                try { ws.send(msg); } catch (e) { }
             }
         }
     }
 
-    // ── Game Loop (60fps) ──
     gameLoop() {
+        this.tickCounter++;
+        const shouldBroadcast = this.tickCounter % BROADCAST_EVERY === 0;
+
         for (let code in this.rooms) {
             const room = this.rooms[code];
             const players = room.players;
 
-            // Move during active round
             if (room.roundActive) {
                 const currentSpeed = this.getRoomSpeed(room);
                 room.currentSpeed = currentSpeed;
+
                 for (let id in players) {
                     const p = players[id];
                     if (!p.alive) continue;
                     this.movePlayer(p, currentSpeed);
-                    if (this.checkCollision(p, players)) {
-                        p.alive = false;
-                    }
+                }
+
+                this.checkCollisions(players);
+            }
+
+            const playerIds = Object.keys(players);
+            const totalPlayers = playerIds.length;
+            let aliveCount = 0;
+            let lastAlive = null;
+            for (let k = 0; k < totalPlayers; k++) {
+                if (players[playerIds[k]].alive) {
+                    aliveCount++;
+                    lastAlive = players[playerIds[k]];
                 }
             }
 
-            // Check round winner
-            const totalPlayers = Object.keys(players).length;
-            const alive = Object.values(players).filter((p) => p.alive);
+            if (room.roundActive && totalPlayers >= 2 && aliveCount <= 1) {
+                room.roundActive = false;
 
-            if (room.roundActive && totalPlayers >= 2) {
-                if (alive.length <= 1) {
-                    room.roundActive = false;
-
-                    if (alive.length === 1) {
-                        const winner = alive[0];
-                        winner.score++;
-
-                        if (winner.score >= 3) {
-                            room.matchWinner = winner.name;
-                            setTimeout(() => {
-                                for (let id in players) {
-                                    players[id].score = 0;
-                                    players[id].trail = [];
-                                    players[id].alive = true;
-                                    players[id].turning = 0;
-                                }
-                                room.matchWinner = null;
-                                this.startCountdown(room, () => {
-                                    this.startRound(room);
-                                    room.centerPhase = false;
-                                });
-                            }, 4000);
-                        } else {
-                            setTimeout(() => {
-                                this.startCountdown(room, () => {
-                                    this.startRound(room);
-                                    room.centerPhase = false;
-                                });
-                            }, 2000);
-                        }
+                if (aliveCount === 1) {
+                    lastAlive.score++;
+                    if (lastAlive.score >= 3) {
+                        room.matchWinner = lastAlive.name;
+                        setTimeout(() => {
+                            for (let id in players) {
+                                players[id].score = 0;
+                                players[id].trailLen = 0;
+                                players[id].trailStart = 0;
+                                players[id].trailSentCount = 0;
+                                players[id].alive = true;
+                                players[id].turning = 0;
+                            }
+                            room.matchWinner = null;
+                            this.startCountdown(room, () => {
+                                this.startRound(room);
+                                room.centerPhase = false;
+                            });
+                        }, 4000);
                     } else {
-                        // Draw
                         setTimeout(() => {
                             this.startCountdown(room, () => {
                                 this.startRound(room);
@@ -373,22 +406,44 @@ export class GameServer {
                             });
                         }, 2000);
                     }
+                } else {
+                    setTimeout(() => {
+                        this.startCountdown(room, () => {
+                            this.startRound(room);
+                            room.centerPhase = false;
+                        });
+                    }, 2000);
                 }
             }
 
-            // Broadcast state
+            if (!shouldBroadcast) continue;
+
+            const sendFull = room.needsFullSync;
+            room.needsFullSync = false;
+
             const compactPlayers = {};
             for (let id in players) {
                 const p = players[id];
+
+                let trail;
+                if (sendFull) {
+                    trail = this.getTrailSlice(p, 0, p.trailLen);
+                    p.trailSentCount = p.trailLen;
+                } else {
+                    trail = this.getTrailSlice(p, p.trailSentCount, p.trailLen);
+                    p.trailSentCount = p.trailLen;
+                }
+
                 compactPlayers[id] = {
-                    name: p.name,
                     x: Math.round(p.x * 10) / 10,
                     y: Math.round(p.y * 10) / 10,
-                    angle: Math.round(p.angle * 100) / 100,
-                    trail: p.trail,
-                    alive: p.alive,
-                    score: p.score,
-                    color: p.color,
+                    a: Math.round(p.angle * 100) / 100,
+                    t: trail,
+                    tl: p.trailLen,
+                    al: p.alive,
+                    s: p.score,
+                    c: p.color,
+                    n: p.name,
                 };
             }
 
@@ -398,23 +453,18 @@ export class GameServer {
 
             const state = JSON.stringify({
                 type: "state",
-                players: compactPlayers,
-                winner: room.matchWinner,
-                center: room.centerPhase,
-                countdown: room.countdown || 0,
-                speed: room.currentSpeed || BASE_SPEED,
-                elapsed: roundElapsed,
-                mapW: CANVAS_W,
-                mapH: CANVAS_H,
+                p: compactPlayers,
+                w: room.matchWinner,
+                cn: room.centerPhase,
+                cd: room.countdown || 0,
+                sp: room.currentSpeed || BASE_SPEED,
+                el: roundElapsed,
+                f: sendFull || false,
             });
 
             for (const [ws, session] of this.sessions) {
                 if (session.room === code) {
-                    try {
-                        ws.send(state);
-                    } catch (e) {
-                        // Client disconnected
-                    }
+                    try { ws.send(state); } catch (e) { }
                 }
             }
         }
