@@ -24,7 +24,7 @@ const COLLISION_RADIUS = 4;
 const COLLISION_RADIUS_SQ = COLLISION_RADIUS * COLLISION_RADIUS;
 const COLLISION_SKIP_OWN = 20;
 
-const BROADCAST_EVERY = 4; // ~15fps broadcast
+const BROADCAST_EVERY = 2; // ~30fps broadcast
 
 const COLORS = ["#ff8c00", "#00bfff", "#ff2e63", "#39ff14", "#e040fb", "#ffeb3b", "#00e5ff", "#ff6e40"];
 

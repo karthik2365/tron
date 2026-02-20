@@ -885,7 +885,8 @@
                             trail.x.copyWithin(0, excess);
                             trail.y.copyWithin(0, excess);
                             trail.len -= excess;
-                            trailDirty = true;
+                            // Don't trigger full rebuild - just clear the offscreen canvas and redraw
+                            // This is handled by the delta update in next frame
                         }
                     }
 
@@ -1047,7 +1048,7 @@
             }
         }
 
-        // ── REBUILD TRAIL CANVAS (only on trim events) ──
+        // ── REBUILD TRAIL CANVAS (only on full sync) ──
         function rebuildTrailCanvas() {
             trailCtx.clearRect(0, 0, 1400, 900);
             for (let id in clientTrails) {
@@ -1055,9 +1056,10 @@
                 const p = players[id];
                 if (!p || trail.len < 2) continue;
 
+                // Draw outer glow
                 trailCtx.strokeStyle = p.color;
                 trailCtx.lineWidth = 3;
-                trailCtx.globalAlpha = p.alive ? 0.6 : 0.12;
+                trailCtx.globalAlpha = p.al ? 0.6 : 0.12;
                 trailCtx.lineCap = 'round';
                 trailCtx.lineJoin = 'round';
                 trailCtx.beginPath();
@@ -1067,8 +1069,9 @@
                 }
                 trailCtx.stroke();
 
+                // Draw white core
                 trailCtx.lineWidth = 1.5;
-                trailCtx.globalAlpha = p.alive ? 0.85 : 0.12;
+                trailCtx.globalAlpha = p.al ? 0.85 : 0.12;
                 trailCtx.strokeStyle = '#ffffff';
                 trailCtx.beginPath();
                 trailCtx.moveTo(trail.x[0], trail.y[0]);
