@@ -251,6 +251,32 @@ export class GameServer {
             if (p.alive) aliveList.push(p);
         }
 
+        // Pre-compute bounding boxes for all alive players' trails
+        const trailBounds = {};
+        for (let k = 0; k < playerIds.length; k++) {
+            const other = players[playerIds[k]];
+            if (!other.alive) continue; // Skip dead players entirely
+
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            const len = other.trailLen;
+            for (let i = 0; i < len; i++) {
+                const idx = (other.trailStart + i) % TRAIL_MAX;
+                const tx = other.trailX[idx];
+                const ty = other.trailY[idx];
+                if (tx < minX) minX = tx;
+                if (tx > maxX) maxX = tx;
+                if (ty < minY) minY = ty;
+                if (ty > maxY) maxY = ty;
+            }
+            // Add collision radius padding
+            trailBounds[other.id] = {
+                minX: minX - COLLISION_RADIUS,
+                maxX: maxX + COLLISION_RADIUS,
+                minY: minY - COLLISION_RADIUS,
+                maxY: maxY + COLLISION_RADIUS,
+            };
+        }
+
         for (let a = 0; a < aliveList.length; a++) {
             const p = aliveList[a];
             const px = p.x;
@@ -260,7 +286,15 @@ export class GameServer {
             for (let k = 0; k < playerIds.length && !hit; k++) {
                 const other = players[playerIds[k]];
                 const isSelf = other.id === p.id;
-                if (!other.alive && !isSelf) continue;
+
+                // Skip dead players entirely
+                if (!other.alive) continue;
+
+                const bounds = trailBounds[other.id];
+                // Bounding box pre-check: skip if player is too far from this trail
+                if (px < bounds.minX || px > bounds.maxX || py < bounds.minY || py > bounds.maxY) {
+                    continue;
+                }
 
                 const len = other.trailLen;
                 const end = isSelf ? len - COLLISION_SKIP_OWN : len - 2;
@@ -269,6 +303,8 @@ export class GameServer {
                     const idx = (other.trailStart + i) % TRAIL_MAX;
                     const dx = px - other.trailX[idx];
                     const dy = py - other.trailY[idx];
+                    // Quick reject before expensive multiplication
+                    if (Math.abs(dx) > COLLISION_RADIUS || Math.abs(dy) > COLLISION_RADIUS) continue;
                     if (dx * dx + dy * dy < COLLISION_RADIUS_SQ) {
                         hit = true;
                         break;

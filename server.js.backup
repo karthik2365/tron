@@ -118,39 +118,13 @@ function movePlayer(p, speed) {
   }
 }
 
-// ── COLLISION CHECK (optimized with bounding box pre-check) ──
+// ── COLLISION CHECK (direct array scan, no object allocation) ──
 function checkCollisions(players) {
   const playerIds = Object.keys(players);
   const aliveList = [];
   for (let k = 0; k < playerIds.length; k++) {
     const p = players[playerIds[k]];
     if (p.alive) aliveList.push(p);
-  }
-
-  // Pre-compute bounding boxes for all alive players' trails
-  const trailBounds = {};
-  for (let k = 0; k < playerIds.length; k++) {
-    const other = players[playerIds[k]];
-    if (!other.alive) continue; // Skip dead players entirely
-
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    const len = other.trailLen;
-    for (let i = 0; i < len; i++) {
-      const idx = (other.trailStart + i) % TRAIL_MAX;
-      const tx = other.trailX[idx];
-      const ty = other.trailY[idx];
-      if (tx < minX) minX = tx;
-      if (tx > maxX) maxX = tx;
-      if (ty < minY) minY = ty;
-      if (ty > maxY) maxY = ty;
-    }
-    // Add collision radius padding
-    trailBounds[other.id] = {
-      minX: minX - COLLISION_RADIUS,
-      maxX: maxX + COLLISION_RADIUS,
-      minY: minY - COLLISION_RADIUS,
-      maxY: maxY + COLLISION_RADIUS,
-    };
   }
 
   for (let a = 0; a < aliveList.length; a++) {
@@ -162,15 +136,8 @@ function checkCollisions(players) {
     for (let k = 0; k < playerIds.length && !hit; k++) {
       const other = players[playerIds[k]];
       const isSelf = other.id === p.id;
-
-      // Skip dead players entirely
-      if (!other.alive) continue;
-
-      const bounds = trailBounds[other.id];
-      // Bounding box pre-check: skip if player is too far from this trail
-      if (px < bounds.minX || px > bounds.maxX || py < bounds.minY || py > bounds.maxY) {
-        continue;
-      }
+      // Skip dead players' trails unless it's self (self can still hit own trail)
+      if (!other.alive && !isSelf) continue;
 
       const len = other.trailLen;
       const end = isSelf ? len - COLLISION_SKIP_OWN : len - 2;
@@ -179,8 +146,6 @@ function checkCollisions(players) {
         const idx = (other.trailStart + i) % TRAIL_MAX;
         const dx = px - other.trailX[idx];
         const dy = py - other.trailY[idx];
-        // Quick reject before expensive multiplication
-        if (Math.abs(dx) > COLLISION_RADIUS || Math.abs(dy) > COLLISION_RADIUS) continue;
         if (dx * dx + dy * dy < COLLISION_RADIUS_SQ) {
           hit = true;
           break;
