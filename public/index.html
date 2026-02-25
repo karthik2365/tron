@@ -691,6 +691,8 @@
         let ws;
         let myId = null;
         let players = {};
+        let playerInfo = {};
+        let netIdToId = {};
         let isGameActive = false;
         let lastCountdown = -1;
         let currentWinner = null;
@@ -756,6 +758,7 @@
         function connect() {
             const protocol = location.protocol === "https:" ? "wss:" : "ws:";
             ws = new WebSocket(protocol + "//" + location.host);
+            ws.binaryType = "arraybuffer";
             ws.onopen = () => console.log("Connected");
             ws.onclose = () => { console.log("Disconnected"); setTimeout(connect, 2000); };
             ws.onerror = (e) => console.error("WS error:", e);
@@ -773,9 +776,91 @@
         // ── Scoreboard throttle ──
         let lastScoreHtml = "";
 
+        function parseBinaryState(buffer) {
+            const view = new DataView(buffer);
+            let offset = 0;
+            const type = view.getUint8(offset++);
+            if (type !== 1) return null;
+
+            const flags = view.getUint8(offset++);
+            const fullSync = (flags & 1) !== 0;
+            const centerPhase = (flags & 2) !== 0;
+            const hasWinner = (flags & 4) !== 0;
+
+            const countdown = view.getUint8(offset++);
+            const elapsed = view.getUint16(offset, true); offset += 2;
+            const speed = view.getUint16(offset, true) / 100; offset += 2;
+
+            let winner = null;
+            const winnerLen = view.getUint8(offset++);
+            if (winnerLen > 0) {
+                const bytes = new Uint8Array(buffer, offset, winnerLen);
+                winner = new TextDecoder().decode(bytes);
+                offset += winnerLen;
+            }
+
+            const playerCount = view.getUint8(offset++);
+            const p = {};
+
+            for (let i = 0; i < playerCount; i++) {
+                const netId = view.getUint8(offset++);
+                const x = view.getInt16(offset, true) / 10; offset += 2;
+                const y = view.getInt16(offset, true) / 10; offset += 2;
+
+                const angleByte = view.getUint8(offset++);
+                const angle = (angleByte / 255) * (Math.PI * 2);
+
+                const score = view.getUint8(offset++);
+                const pFlags = view.getUint8(offset++);
+                const alive = (pFlags & 1) !== 0;
+
+                const totalTrailLen = view.getUint16(offset, true); offset += 2;
+                const trailLen = view.getUint16(offset, true); offset += 2;
+
+                const trail = [];
+                for (let j = 0; j < trailLen; j++) {
+                    trail.push(view.getInt16(offset, true) / 10); offset += 2;
+                }
+
+                const id = netIdToId[netId];
+                if (id) {
+                    const info = playerInfo[id];
+                    p[id] = {
+                        x, y, a: angle,
+                        t: trail,
+                        tl: totalTrailLen,
+                        al: alive,
+                        s: score,
+                        c: info ? info.color : "#fff",
+                        n: info ? info.name : "Unknown",
+                    };
+                }
+            }
+
+            return {
+                type: "state",
+                p,
+                w: winner,
+                cn: centerPhase,
+                cd: countdown,
+                sp: speed,
+                el: elapsed,
+                f: fullSync
+            };
+        }
+
+        let serverUpdates = [];
+        const INTERP_DELAY = 100;
+
         // ── MESSAGE HANDLER ──
         function handleMessage(event) {
-            const data = JSON.parse(event.data);
+            let data;
+            if (event.data instanceof ArrayBuffer) {
+                data = parseBinaryState(event.data);
+                if (!data) return;
+            } else {
+                data = JSON.parse(event.data);
+            }
 
             if (data.type === "init") myId = data.id;
             if (data.type === "error") showError(data.message);
@@ -803,170 +888,186 @@
             }
 
             if (data.type === "state") {
-                const dp = data.p; // compact players
+                data.t = Date.now();
+                serverUpdates.push(data);
+                if (serverUpdates.length > 60) serverUpdates.shift();
+            }
+        }
 
-                if (data.f) {
-                    // Full sync: reset all trails
-                    trailCtx.clearRect(0, 0, 1400, 900);
-                    for (let id in clientTrails) {
-                        clientTrails[id].len = 0;
-                    }
-                    for (let id in dp) {
-                        const trail = ensureTrail(id);
-                        const flat = dp[id].t;
-                        const pts = flat.length / 2;
-                        trail.len = 0;
-                        for (let i = 0; i < pts; i++) {
-                            trail.x[i] = flat[i * 2];
-                            trail.y[i] = flat[i * 2 + 1];
-                        }
-                        trail.len = pts;
-                    }
-                    trailDirty = true;
-                } else {
-                    // Delta: append new trail points & draw to offscreen
-                    for (let id in dp) {
-                        const p = dp[id];
-                        const flat = p.t;
-                        const newPts = flat.length / 2;
+        // Apply state side-effects (trails, score, etc)
+        function commitState(state) {
+            const dp = state.p;
 
-                        if (newPts > 0) {
-                            const trail = ensureTrail(id);
-
-                            // Draw new segments to offscreen trail canvas
-                            trailCtx.strokeStyle = p.c;
-                            trailCtx.lineWidth = 3;
-                            trailCtx.globalAlpha = p.al ? 0.6 : 0.12;
-                            trailCtx.lineCap = 'round';
-                            trailCtx.lineJoin = 'round';
-                            trailCtx.beginPath();
-                            if (trail.len > 0) {
-                                trailCtx.moveTo(trail.x[trail.len - 1], trail.y[trail.len - 1]);
-                            } else {
-                                trailCtx.moveTo(flat[0], flat[1]);
-                            }
-                            for (let i = 0; i < newPts; i++) {
-                                trailCtx.lineTo(flat[i * 2], flat[i * 2 + 1]);
-                            }
-                            trailCtx.stroke();
-
-                            // White core
-                            trailCtx.lineWidth = 1.5;
-                            trailCtx.globalAlpha = p.al ? 0.85 : 0.12;
-                            trailCtx.strokeStyle = '#ffffff';
-                            trailCtx.beginPath();
-                            if (trail.len > 0) {
-                                trailCtx.moveTo(trail.x[trail.len - 1], trail.y[trail.len - 1]);
-                            } else {
-                                trailCtx.moveTo(flat[0], flat[1]);
-                            }
-                            for (let i = 0; i < newPts; i++) {
-                                trailCtx.lineTo(flat[i * 2], flat[i * 2 + 1]);
-                            }
-                            trailCtx.stroke();
-                            trailCtx.globalAlpha = 1;
-
-                            // Append to local trail buffer
-                            for (let i = 0; i < newPts; i++) {
-                                if (trail.len < TRAIL_CAP) {
-                                    trail.x[trail.len] = flat[i * 2];
-                                    trail.y[trail.len] = flat[i * 2 + 1];
-                                    trail.len++;
-                                }
-                            }
-                        }
-
-                        // Trim if server trail is shorter (circular buffer wrapped)
-                        const serverLen = dp[id].tl || 0;
-                        const trail = ensureTrail(id);
-                        if (trail.len > serverLen + 30) {
-                            const excess = trail.len - serverLen;
-                            // Shift typed array contents
-                            trail.x.copyWithin(0, excess);
-                            trail.y.copyWithin(0, excess);
-                            trail.len -= excess;
-                            // Don't trigger full rebuild - just clear the offscreen canvas and redraw
-                            // This is handled by the delta update in next frame
-                        }
-                    }
-
-                    // Remove trails for disconnected players
-                    for (let id in clientTrails) {
-                        if (!dp[id]) {
-                            delete clientTrails[id];
-                            trailDirty = true;
-                        }
-                    }
+            if (state.f) {
+                // Full sync: reset all trails
+                trailCtx.clearRect(0, 0, 1400, 900);
+                for (let id in clientTrails) {
+                    clientTrails[id].len = 0;
                 }
-
-                // Unpack compact player format to our rendering format
-                players = {};
                 for (let id in dp) {
-                    players[id] = {
-                        x: dp[id].x,
-                        y: dp[id].y,
-                        angle: dp[id].a,
-                        alive: dp[id].al,
-                        score: dp[id].s,
-                        color: dp[id].c,
-                        name: dp[id].n,
-                    };
-                }
-
-                updateScore();
-
-                // Countdown
-                if (data.cn && data.cd > 0) {
-                    if (data.cd !== lastCountdown) {
-                        lastCountdown = data.cd;
-                        countdownEl.textContent = data.cd;
-                        countdownEl.classList.remove("visible");
-                        void countdownEl.offsetWidth;
-                        countdownEl.classList.add("visible");
+                    const trail = ensureTrail(id);
+                    const flat = dp[id].t;
+                    const pts = flat.length / 2;
+                    trail.len = 0;
+                    for (let i = 0; i < pts; i++) {
+                        trail.x[i] = flat[i * 2];
+                        trail.y[i] = flat[i * 2 + 1];
                     }
-                } else if (data.cn && data.cd === 0) {
-                    countdownEl.textContent = "GO!";
-                    countdownEl.classList.add("visible");
-                    setTimeout(() => {
-                        countdownEl.classList.remove("visible");
-                        lastCountdown = -1;
-                    }, 600);
-                } else {
+                    trail.len = pts;
+                }
+                trailDirty = true;
+            } else {
+                // Delta: append new trail points & draw to offscreen
+                for (let id in dp) {
+                    const p = dp[id];
+                    const flat = p.t;
+                    const newPts = flat.length / 2;
+
+                    if (newPts > 0) {
+                        const trail = ensureTrail(id);
+
+                        // Draw new segments to offscreen trail canvas
+                        trailCtx.strokeStyle = p.c;
+                        trailCtx.lineWidth = 3;
+                        trailCtx.globalAlpha = p.al ? 0.6 : 0.12;
+                        trailCtx.lineCap = 'round';
+                        trailCtx.lineJoin = 'round';
+                        trailCtx.beginPath();
+                        if (trail.len > 0) {
+                            trailCtx.moveTo(trail.x[trail.len - 1], trail.y[trail.len - 1]);
+                        } else {
+                            trailCtx.moveTo(flat[0], flat[1]);
+                        }
+                        for (let i = 0; i < newPts; i++) {
+                            trailCtx.lineTo(flat[i * 2], flat[i * 2 + 1]);
+                        }
+                        trailCtx.stroke();
+
+                        // White core
+                        trailCtx.lineWidth = 1.5;
+                        trailCtx.globalAlpha = p.al ? 0.85 : 0.12;
+                        trailCtx.strokeStyle = '#ffffff';
+                        trailCtx.beginPath();
+                        if (trail.len > 0) {
+                            trailCtx.moveTo(trail.x[trail.len - 1], trail.y[trail.len - 1]);
+                        } else {
+                            trailCtx.moveTo(flat[0], flat[1]);
+                        }
+                        for (let i = 0; i < newPts; i++) {
+                            trailCtx.lineTo(flat[i * 2], flat[i * 2 + 1]);
+                        }
+                        trailCtx.stroke();
+                        trailCtx.globalAlpha = 1;
+
+                        // Append to local trail buffer
+                        for (let i = 0; i < newPts; i++) {
+                            if (trail.len < TRAIL_CAP) {
+                                trail.x[trail.len] = flat[i * 2];
+                                trail.y[trail.len] = flat[i * 2 + 1];
+                                trail.len++;
+                            }
+                        }
+                    }
+
+                    // Trim if server trail is shorter (circular buffer wrapped)
+                    const serverLen = dp[id].tl || 0;
+                    const trail = ensureTrail(id);
+                    if (trail.len > serverLen + 30) {
+                        const excess = trail.len - serverLen;
+                        // Shift typed array contents
+                        trail.x.copyWithin(0, excess);
+                        trail.y.copyWithin(0, excess);
+                        trail.len -= excess;
+                        // Trigger redraw occasionally if trimming happens
+                        if (excess > 0) trailDirty = true;
+                    }
+                }
+
+                // Remove trails for disconnected players
+                for (let id in clientTrails) {
+                    if (!dp[id]) {
+                        delete clientTrails[id];
+                        trailDirty = true;
+                    }
+                }
+            }
+
+            // Sync players object base state (excluding x,y,angle which are interpolated)
+            // But we need to init them if missing
+            for (let id in dp) {
+                if (!players[id]) players[id] = {};
+                players[id].alive = dp[id].al;
+                players[id].score = dp[id].s;
+                players[id].color = dp[id].c;
+                players[id].name = dp[id].n;
+                // If not interpolating (e.g. just joined), snap position
+                if (players[id].x === undefined) {
+                    players[id].x = dp[id].x;
+                    players[id].y = dp[id].y;
+                    players[id].angle = dp[id].a;
+                }
+            }
+            // Remove disconnected
+            for (let id in players) {
+                if (!dp[id]) delete players[id];
+            }
+
+            updateScore();
+
+            // Countdown
+            if (state.cn && state.cd > 0) {
+                if (state.cd !== lastCountdown) {
+                    lastCountdown = state.cd;
+                    countdownEl.textContent = state.cd;
                     countdownEl.classList.remove("visible");
+                    void countdownEl.offsetWidth;
+                    countdownEl.classList.add("visible");
                 }
+            } else if (state.cn && state.cd === 0) {
+                countdownEl.textContent = "GO!";
+                countdownEl.classList.add("visible");
+                setTimeout(() => {
+                    countdownEl.classList.remove("visible");
+                    lastCountdown = -1;
+                }, 600);
+            } else {
+                countdownEl.classList.remove("visible");
+            }
 
-                // Winner
-                if (data.w && data.w !== currentWinner) {
-                    currentWinner = data.w;
-                    winnerNameEl.textContent = data.w;
-                    winnerOverlay.classList.add("show");
-                    setTimeout(() => {
-                        winnerOverlay.classList.remove("show");
-                        currentWinner = null;
-                    }, 3500);
-                }
+            // Winner
+            if (state.w && state.w !== currentWinner) {
+                currentWinner = state.w;
+                winnerNameEl.textContent = state.w;
+                winnerOverlay.classList.add("show");
+                setTimeout(() => {
+                    winnerOverlay.classList.remove("show");
+                    currentWinner = null;
+                }, 3500);
+            }
 
-                // Speed + Timer HUD
-                if (data.sp !== undefined) {
-                    const spd = data.sp;
-                    speedValueEl.textContent = spd.toFixed(1) + 'x';
-                    speedValueEl.className = 'speed-value';
-                    if (spd >= 6) speedValueEl.classList.add('danger');
-                    else if (spd >= 4) speedValueEl.classList.add('fast');
-                    speedBar.style.width = Math.min(((spd - 2.5) / 5.5) * 100, 100) + '%';
-                }
-                if (data.el !== undefined) {
-                    const mins = Math.floor(data.el / 60).toString().padStart(2, '0');
-                    const secs = (data.el % 60).toString().padStart(2, '0');
-                    timerValueEl.textContent = mins + ':' + secs;
-                }
+            // Speed + Timer HUD
+            if (state.sp !== undefined) {
+                const spd = state.sp;
+                speedValueEl.textContent = spd.toFixed(1) + 'x';
+                speedValueEl.className = 'speed-value';
+                if (spd >= 6) speedValueEl.classList.add('danger');
+                else if (spd >= 4) speedValueEl.classList.add('fast');
+                speedBar.style.width = Math.min(((spd - 2.5) / 5.5) * 100, 100) + '%';
+            }
+            if (state.el !== undefined) {
+                const mins = Math.floor(state.el / 60).toString().padStart(2, '0');
+                const secs = (state.el % 60).toString().padStart(2, '0');
+                timerValueEl.textContent = mins + ':' + secs;
             }
         }
 
         // ── PLAYER LIST ──
         function updatePlayerList(info) {
             playerListEl.innerHTML = "";
+            playerInfo = info;
+            netIdToId = {};
             for (let id in info) {
+                netIdToId[info[id].netId] = id;
                 const li = document.createElement("li");
                 li.textContent = info[id].name;
                 li.style.borderLeftColor = info[id].color;
@@ -1084,8 +1185,87 @@
             trailDirty = false;
         }
 
+        function lerp(a, b, t) { return a + (b - a) * t; }
+
+        // Shortest arc interpolation for angle
+        function lerpAngle(a, b, t) {
+            let diff = b - a;
+            if (diff > Math.PI) diff -= Math.PI * 2;
+            if (diff < -Math.PI) diff += Math.PI * 2;
+            return a + diff * t;
+        }
+
+        function updateGameState(renderTime) {
+            // Commit old updates
+            while (serverUpdates.length >= 2 && serverUpdates[1].t <= renderTime) {
+                commitState(serverUpdates[1]); // Commit the 'next' state as it becomes 'current'
+                serverUpdates.shift();
+            }
+            // If we only have 1 update and it's old, ensure it is committed
+            if (serverUpdates.length === 1 && serverUpdates[0].t <= renderTime) {
+                 commitState(serverUpdates[0]);
+            }
+
+            // Interpolate
+            if (serverUpdates.length >= 2) {
+                const u1 = serverUpdates[0];
+                const u2 = serverUpdates[1];
+                const total = u2.t - u1.t;
+                const fraction = Math.max(0, Math.min(1, (renderTime - u1.t) / total));
+
+                for (let id in players) {
+                    if (u1.p[id] && u2.p[id] && players[id].alive) {
+                        const p1 = u1.p[id];
+                        const p2 = u2.p[id];
+
+                        // Piecewise linear interpolation along trail
+                        // Path: p1 -> [trail points] -> p2
+                        // If p2 has trail points, they happened between u1 and u2.
+                        const trail = p2.t || [];
+                        const points = [];
+                        points.push({x: p1.x, y: p1.y});
+                        for (let i = 0; i < trail.length; i+=2) {
+                            points.push({x: trail[i], y: trail[i+1]});
+                        }
+                        points.push({x: p2.x, y: p2.y});
+
+                        const segments = points.length - 1;
+                        if (segments > 0) {
+                            const val = fraction * segments;
+                            const idx = Math.min(Math.floor(val), segments - 1);
+                            const t = val - idx;
+
+                            const start = points[idx];
+                            const end = points[idx+1];
+
+                            players[id].x = lerp(start.x, end.x, t);
+                            players[id].y = lerp(start.y, end.y, t);
+                            players[id].angle = lerpAngle(p1.a, p2.a, fraction);
+                        } else {
+                            players[id].x = p1.x;
+                            players[id].y = p1.y;
+                            players[id].angle = p1.a;
+                        }
+                    }
+                }
+            } else if (serverUpdates.length === 1) {
+                // Snap to latest if we don't have future packet yet
+                const u = serverUpdates[0];
+                for (let id in players) {
+                    if (u.p[id]) {
+                        players[id].x = u.p[id].x;
+                        players[id].y = u.p[id].y;
+                        players[id].angle = u.p[id].a;
+                    }
+                }
+            }
+        }
+
         // ── MAIN DRAW LOOP ──
         function draw() {
+            const renderTime = Date.now() - INTERP_DELAY;
+            updateGameState(renderTime);
+
             // Clear
             ctx.fillStyle = "#0a0a0f";
             ctx.fillRect(0, 0, 1400, 900);

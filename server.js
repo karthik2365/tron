@@ -24,8 +24,8 @@ const COLLISION_RADIUS = 4;
 const COLLISION_RADIUS_SQ = COLLISION_RADIUS * COLLISION_RADIUS;
 const COLLISION_SKIP_OWN = 20;
 
-// Broadcast at ~15fps (every 4th physics tick at 60fps)
-const BROADCAST_EVERY = 4;
+// Broadcast at ~20fps (every 3rd physics tick at 60fps)
+const BROADCAST_EVERY = 3;
 let tickCounter = 0;
 
 // Spawn positions for up to 8 players
@@ -53,9 +53,10 @@ function generateRoomCode() {
 
 // ── CREATE PLAYER ──
 // Trail stored as flat Float32Arrays for zero-GC pressure
-function createPlayer(id, index, name) {
+function createPlayer(id, index, name, netId) {
   return {
     id,
+    netId,
     name: typeof name === "string" && name.trim().length > 0 ? name.trim() : "Player",
     x: CANVAS_W / 2,
     y: CANVAS_H / 2,
@@ -255,9 +256,12 @@ wss.on("connection", (ws) => {
         roundStartTime: null,
         currentSpeed: BASE_SPEED,
         needsFullSync: false,
+        nextNetId: 1,
       };
       ws.room = code;
-      rooms[code].players[id] = createPlayer(id, 0, data.name);
+      let netId = rooms[code].nextNetId++;
+      if (netId > 255) netId = rooms[code].nextNetId = 1;
+      rooms[code].players[id] = createPlayer(id, 0, data.name, netId);
       ws.send(JSON.stringify({ type: "roomCreated", code }));
       broadcastPlayerList(code);
     }
@@ -274,7 +278,9 @@ wss.on("connection", (ws) => {
         return;
       }
 
-      const newPlayer = createPlayer(id, playerCount, data.name);
+      let netId = rooms[code].nextNetId++;
+      if (netId > 255) netId = rooms[code].nextNetId = 1;
+      const newPlayer = createPlayer(id, playerCount, data.name, netId);
       if (rooms[code].gameStarted) {
         newPlayer.alive = false;
       }
@@ -341,6 +347,7 @@ function broadcastPlayerList(code) {
     names[id] = {
       name: rooms[code].players[id].name,
       color: rooms[code].players[id].color,
+      netId: rooms[code].players[id].netId,
     };
   }
   broadcastToRoom(code, { type: "playerList", players: names });
@@ -364,6 +371,107 @@ function getTrailSlice(p, fromIndex, toIndex) {
     result.push(Math.round(p.trailY[idx] * 10) / 10);
   }
   return result; // flat [x0,y0,x1,y1,...] — 50% smaller than [{x,y},{x,y}...]
+}
+
+// ── SERIALIZE STATE (Binary Protocol) ──
+function serializeState(room, sendFull) {
+  let size = 0;
+  size += 1; // type
+  size += 1; // flags
+  size += 1; // countdown
+  size += 2; // elapsed
+  size += 2; // speed
+
+  const winnerName = room.matchWinner || "";
+  const winnerBuf = Buffer.from(winnerName, "utf8");
+  size += 1; // winner len
+  size += winnerBuf.length;
+
+  const playerIds = Object.keys(room.players);
+  size += 1; // player count
+
+  const playersData = [];
+  for (let id of playerIds) {
+    const p = room.players[id];
+
+    let trail;
+    if (sendFull) {
+      trail = getTrailSlice(p, 0, p.trailLen);
+    } else {
+      trail = getTrailSlice(p, p.trailSentCount, p.trailLen);
+    }
+    p.trailSentCount = p.trailLen; // Update sent count
+
+    // netId(1) + x(2) + y(2) + ang(1) + score(1) + flags(1) + totalTrailLen(2) + trailCount(2) + trailData(len*2)
+    const pSize = 1 + 2 + 2 + 1 + 1 + 1 + 2 + 2 + (trail.length * 2);
+    size += pSize;
+
+    playersData.push({ p, trail });
+  }
+
+  const buf = Buffer.allocUnsafe(size);
+  let offset = 0;
+
+  // Header
+  buf.writeUInt8(1, offset++); // Type: State
+
+  let flags = 0;
+  if (sendFull) flags |= 1;
+  if (room.centerPhase) flags |= 2;
+  if (room.matchWinner) flags |= 4;
+  buf.writeUInt8(flags, offset++);
+
+  buf.writeUInt8(room.countdown || 0, offset++);
+
+  const roundElapsed = room.roundStartTime
+      ? Math.floor((Date.now() - room.roundStartTime) / 1000)
+      : 0;
+  buf.writeUInt16LE(roundElapsed, offset); offset += 2;
+
+  const sp = Math.min(Math.round((room.currentSpeed || BASE_SPEED) * 100), 65535);
+  buf.writeUInt16LE(sp, offset); offset += 2;
+
+  buf.writeUInt8(winnerBuf.length, offset++);
+  if (winnerBuf.length > 0) {
+    winnerBuf.copy(buf, offset);
+    offset += winnerBuf.length;
+  }
+
+  buf.writeUInt8(playerIds.length, offset++);
+
+  for (let item of playersData) {
+    const { p, trail } = item;
+
+    buf.writeUInt8(p.netId || 0, offset++);
+
+    // Position x10
+    buf.writeInt16LE(Math.round(p.x * 10), offset); offset += 2;
+    buf.writeInt16LE(Math.round(p.y * 10), offset); offset += 2;
+
+    // Angle: map 0-2PI to 0-255
+    let angle = p.angle % (Math.PI * 2);
+    if (angle < 0) angle += Math.PI * 2;
+    const angleByte = Math.floor((angle / (Math.PI * 2)) * 255);
+    buf.writeUInt8(angleByte, offset++);
+
+    buf.writeUInt8(p.score, offset++);
+
+    let pFlags = 0;
+    if (p.alive) pFlags |= 1;
+    buf.writeUInt8(pFlags, offset++);
+
+    // Total Trail Length (for client sync/trim)
+    buf.writeUInt16LE(p.trailLen, offset); offset += 2;
+
+    // Trail (length of values array)
+    buf.writeUInt16LE(trail.length, offset); offset += 2;
+
+    for (let i = 0; i < trail.length; i++) {
+      buf.writeInt16LE(Math.round(trail[i] * 10), offset); offset += 2;
+    }
+  }
+
+  return buf;
 }
 
 // ── GAME LOOP ──
@@ -448,47 +556,8 @@ function gameLoop() {
     const sendFull = room.needsFullSync;
     room.needsFullSync = false;
 
-    const compactPlayers = {};
-    for (let id in players) {
-      const p = players[id];
-
-      // Delta trail: only send new points since last broadcast
-      let trail;
-      if (sendFull) {
-        trail = getTrailSlice(p, 0, p.trailLen);
-        p.trailSentCount = p.trailLen;
-      } else {
-        trail = getTrailSlice(p, p.trailSentCount, p.trailLen);
-        p.trailSentCount = p.trailLen;
-      }
-
-      compactPlayers[id] = {
-        x: Math.round(p.x * 10) / 10,
-        y: Math.round(p.y * 10) / 10,
-        a: Math.round(p.angle * 100) / 100,
-        t: trail,      // flat [x0,y0,x1,y1,...]
-        tl: p.trailLen, // total length for trim sync
-        al: p.alive,
-        s: p.score,
-        c: p.color,
-        n: p.name,
-      };
-    }
-
-    const roundElapsed = room.roundStartTime
-      ? Math.floor((Date.now() - room.roundStartTime) / 1000)
-      : 0;
-
-    const state = JSON.stringify({
-      type: "state",
-      p: compactPlayers,
-      w: room.matchWinner,
-      cn: room.centerPhase,
-      cd: room.countdown || 0,
-      sp: room.currentSpeed || BASE_SPEED,
-      el: roundElapsed,
-      f: sendFull || false,
-    });
+    // Use binary serialization
+    const state = serializeState(room, sendFull);
 
     wss.clients.forEach((client) => {
       if (client.room === code && client.readyState === WebSocket.OPEN) {
