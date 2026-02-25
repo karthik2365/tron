@@ -851,6 +851,7 @@
 
         let serverUpdates = [];
         const INTERP_DELAY = 100;
+        const TURN_SPEED = 0.045; // Match server physics constant
 
         // ── MESSAGE HANDLER ──
         function handleMessage(event) {
@@ -1238,10 +1239,13 @@
                             const start = points[idx];
                             const end = points[idx+1];
 
-                            players[id].x = lerp(start.x, end.x, t);
-                            players[id].y = lerp(start.y, end.y, t);
-                            players[id].angle = lerpAngle(p1.a, p2.a, fraction);
-                        } else {
+                            // Only interpolate position if not self
+                            if (id !== myId) {
+                                players[id].x = lerp(start.x, end.x, t);
+                                players[id].y = lerp(start.y, end.y, t);
+                                players[id].angle = lerpAngle(p1.a, p2.a, fraction);
+                            }
+                        } else if (id !== myId) {
                             players[id].x = p1.x;
                             players[id].y = p1.y;
                             players[id].angle = p1.a;
@@ -1252,7 +1256,7 @@
                 // Snap to latest if we don't have future packet yet
                 const u = serverUpdates[0];
                 for (let id in players) {
-                    if (u.p[id]) {
+                    if (u.p[id] && id !== myId) {
                         players[id].x = u.p[id].x;
                         players[id].y = u.p[id].y;
                         players[id].angle = u.p[id].a;
@@ -1261,10 +1265,47 @@
             }
         }
 
+        function predictLocalPlayer() {
+            if (!myId || !players[myId] || !players[myId].alive) return;
+
+            // Use latest server update as base
+            const lastUpdate = serverUpdates[serverUpdates.length - 1];
+            if (!lastUpdate || !lastUpdate.p[myId]) return;
+
+            const p = lastUpdate.p[myId];
+            const now = Date.now();
+            const dt = now - lastUpdate.t; // Time since packet received
+
+            // Server speed is pixels/tick (60Hz)
+            // dt is in ms
+            // ticks = dt / (1000/60) = dt * 0.06
+            const ticks = dt * 0.06;
+
+            // Calculate current turning direction
+            let dir = 0;
+            const left = keysDown.has("ArrowLeft") || keysDown.has("a") || keysDown.has("A");
+            const right = keysDown.has("ArrowRight") || keysDown.has("d") || keysDown.has("D");
+            if (left && !right) dir = -1;
+            if (right && !left) dir = 1;
+
+            // Extrapolate angle
+            const predAngle = p.a + (dir * TURN_SPEED * ticks);
+
+            // Extrapolate position (simple linear projection from last known)
+            const speed = lastUpdate.sp || 2.5;
+            const predX = p.x + Math.cos(predAngle) * speed * ticks;
+            const predY = p.y + Math.sin(predAngle) * speed * ticks;
+
+            players[myId].x = predX;
+            players[myId].y = predY;
+            players[myId].angle = predAngle;
+        }
+
         // ── MAIN DRAW LOOP ──
         function draw() {
             const renderTime = Date.now() - INTERP_DELAY;
             updateGameState(renderTime);
+            predictLocalPlayer();
 
             // Clear
             ctx.fillStyle = "#0a0a0f";
@@ -1284,6 +1325,28 @@
                 const p = players[id];
 
                 if (p.alive) {
+                    // For local player, draw connecting line from server head to predicted head
+                    if (id === myId) {
+                        const lastUpdate = serverUpdates[serverUpdates.length - 1];
+                        if (lastUpdate && lastUpdate.p[myId]) {
+                             const serverP = lastUpdate.p[myId];
+                             ctx.beginPath();
+                             ctx.moveTo(serverP.x, serverP.y);
+                             ctx.lineTo(p.x, p.y);
+                             ctx.lineWidth = 3;
+                             ctx.strokeStyle = p.color;
+                             ctx.lineCap = 'round';
+                             ctx.globalAlpha = 0.6;
+                             ctx.stroke();
+
+                             ctx.lineWidth = 1.5;
+                             ctx.strokeStyle = '#ffffff';
+                             ctx.globalAlpha = 0.85;
+                             ctx.stroke();
+                             ctx.globalAlpha = 1;
+                        }
+                    }
+
                     const angle = p.angle || 0;
                     const hx = p.x;
                     const hy = p.y;
