@@ -852,6 +852,7 @@
         let serverUpdates = [];
         const INTERP_DELAY = 100;
         const TURN_SPEED = 0.045; // Match server physics constant
+        const inputHistory = []; // {t, dir}
 
         // ── MESSAGE HANDLER ──
         function handleMessage(event) {
@@ -1109,6 +1110,12 @@
             let dir = 0;
             if (left && !right) dir = -1;
             if (right && !left) dir = 1;
+
+            // Record input for prediction
+            inputHistory.push({ t: Date.now(), dir });
+            // Prune old
+            if (inputHistory.length > 100) inputHistory.shift();
+
             ws.send(JSON.stringify({ type: "turn", dir }));
         }
 
@@ -1273,32 +1280,57 @@
             if (!lastUpdate || !lastUpdate.p[myId]) return;
 
             const p = lastUpdate.p[myId];
+            const baseTime = lastUpdate.t;
             const now = Date.now();
-            const dt = now - lastUpdate.t; // Time since packet received
 
-            // Server speed is pixels/tick (60Hz)
-            // dt is in ms
-            // ticks = dt / (1000/60) = dt * 0.06
-            const ticks = dt * 0.06;
+            // Simulation state
+            let simX = p.x;
+            let simY = p.y;
+            let simAngle = p.a;
 
-            // Calculate current turning direction
-            let dir = 0;
-            const left = keysDown.has("ArrowLeft") || keysDown.has("a") || keysDown.has("A");
-            const right = keysDown.has("ArrowRight") || keysDown.has("d") || keysDown.has("D");
-            if (left && !right) dir = -1;
-            if (right && !left) dir = 1;
+            // Find initial direction at baseTime
+            let activeDir = 0;
+            for (let i = inputHistory.length - 1; i >= 0; i--) {
+                if (inputHistory[i].t <= baseTime) {
+                    activeDir = inputHistory[i].dir;
+                    break;
+                }
+            }
 
-            // Extrapolate angle
-            const predAngle = p.a + (dir * TURN_SPEED * ticks);
+            // Inputs to replay (those that happened after baseTime)
+            const inputs = inputHistory.filter(i => i.t > baseTime);
 
-            // Extrapolate position (simple linear projection from last known)
+            let currentTime = baseTime;
             const speed = lastUpdate.sp || 2.5;
-            const predX = p.x + Math.cos(predAngle) * speed * ticks;
-            const predY = p.y + Math.sin(predAngle) * speed * ticks;
 
-            players[myId].x = predX;
-            players[myId].y = predY;
-            players[myId].angle = predAngle;
+            // Replay loop
+            for (const input of inputs) {
+                if (input.t > now) break; // Future input?
+
+                const dt = input.t - currentTime;
+                if (dt > 0) {
+                    const ticks = dt * 0.06;
+                    simAngle += activeDir * TURN_SPEED * ticks;
+                    simX += Math.cos(simAngle) * speed * ticks;
+                    simY += Math.sin(simAngle) * speed * ticks;
+                }
+
+                currentTime = input.t;
+                activeDir = input.dir;
+            }
+
+            // Final step to now
+            const finalDt = now - currentTime;
+            if (finalDt > 0) {
+                const ticks = finalDt * 0.06;
+                simAngle += activeDir * TURN_SPEED * ticks;
+                simX += Math.cos(simAngle) * speed * ticks;
+                simY += Math.sin(simAngle) * speed * ticks;
+            }
+
+            players[myId].x = simX;
+            players[myId].y = simY;
+            players[myId].angle = simAngle;
         }
 
         // ── MAIN DRAW LOOP ──
