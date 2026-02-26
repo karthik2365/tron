@@ -1295,28 +1295,22 @@
                     const serverAngle = latest.p[myId].a;
 
                     if (!predInited) {
-                        // First time: snap to server pos
                         predX = serverX;
                         predY = serverY;
                         predAngle = serverAngle;
                         predInited = true;
                     } else {
-                        // Position: correct quickly so trails stay accurate
-                        const posFactor = 0.3;
-                        predX = lerp(predX, serverX, posFactor);
-                        predY = lerp(predY, serverY, posFactor);
+                        // Position: blend toward server for trail accuracy
+                        predX = lerp(predX, serverX, 0.15);
+                        predY = lerp(predY, serverY, 0.15);
 
-                        // Angle: trust local input heavily to avoid turn lag
-                        // Only blend angle gently — local turning must feel instant
+                        // Angle: very gentle blend to avoid fighting local turn input
+                        // During network RTT, server still reports old angle — strong blend = input delay
                         let angleDiff = serverAngle - predAngle;
                         if (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         if (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                        // If difference is small (server caught up), trust local fully
-                        if (Math.abs(angleDiff) < 0.15) {
-                            // Server and prediction agree — no correction needed
-                        } else {
-                            // Gentle nudge toward server (very low factor to avoid fighting input)
-                            predAngle = lerpAngle(predAngle, serverAngle, 0.08);
+                        if (Math.abs(angleDiff) > 0.15) {
+                            predAngle = lerpAngle(predAngle, serverAngle, 0.05);
                         }
                     }
 
