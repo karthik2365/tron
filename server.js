@@ -24,8 +24,8 @@ const COLLISION_RADIUS = 4;
 const COLLISION_RADIUS_SQ = COLLISION_RADIUS * COLLISION_RADIUS;
 const COLLISION_SKIP_OWN = 20;
 
-// Broadcast at ~20fps (every 3rd physics tick at 60fps)
-const BROADCAST_EVERY = 3;
+// Broadcast at ~30fps (every 2nd physics tick at 60fps)
+const BROADCAST_EVERY = 2;
 let tickCounter = 0;
 
 // Spawn positions for up to 8 players
@@ -236,6 +236,19 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "init", id }));
 
   ws.on("message", (msg) => {
+    // Fast path: binary turn commands (2 bytes: [0x02, dir+1])
+    if (Buffer.isBuffer(msg) && msg.length === 2 && msg[0] === 0x02) {
+      const room = rooms[ws.room];
+      if (!room) return;
+      const p = room.players[id];
+      if (!p || !p.alive) return;
+      const dir = msg[1] - 1; // 0→-1, 1→0, 2→1
+      if (dir === -1 || dir === 0 || dir === 1) {
+        p.turning = dir;
+      }
+      return;
+    }
+
     let data;
     try {
       data = JSON.parse(msg);
@@ -315,6 +328,7 @@ wss.on("connection", (ws) => {
       });
     }
 
+    // Fallback: JSON turn commands (backward compatibility)
     if (data.type === "turn") {
       const room = rooms[ws.room];
       if (!room) return;
@@ -424,8 +438,8 @@ function serializeState(room, sendFull) {
   buf.writeUInt8(room.countdown || 0, offset++);
 
   const roundElapsed = room.roundStartTime
-      ? Math.floor((Date.now() - room.roundStartTime) / 1000)
-      : 0;
+    ? Math.floor((Date.now() - room.roundStartTime) / 1000)
+    : 0;
   buf.writeUInt16LE(roundElapsed, offset); offset += 2;
 
   const sp = Math.min(Math.round((room.currentSpeed || BASE_SPEED) * 100), 65535);

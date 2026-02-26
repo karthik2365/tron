@@ -697,6 +697,18 @@
         let lastCountdown = -1;
         let currentWinner = null;
 
+        // Client-side prediction state
+        let localTurnDir = 0;
+        let localSpeed = 2.5;
+        const LOCAL_TURN_SPEED = 0.045;
+
+        // Continuous local prediction (runs every frame, not reset by server)
+        let predX = 0;
+        let predY = 0;
+        let predAngle = 0;
+        let predInited = false;
+        let lastPredTime = 0;
+
         // ── STATIC GRID (rendered once, never redrawn) ──
         const gridCanvas = document.createElement('canvas');
         gridCanvas.width = 1400;
@@ -850,7 +862,7 @@
         }
 
         let serverUpdates = [];
-        const INTERP_DELAY = 100;
+        const INTERP_DELAY = 0;
 
         // ── MESSAGE HANDLER ──
         function handleMessage(event) {
@@ -899,7 +911,9 @@
             const dp = state.p;
 
             if (state.f) {
-                // Full sync: reset all trails
+                // Full sync: reset all trails and prediction state
+                predInited = false;
+                lastPredTime = 0;
                 trailCtx.clearRect(0, 0, 1400, 900);
                 for (let id in clientTrails) {
                     clientTrails[id].len = 0;
@@ -1045,6 +1059,11 @@
                 }, 3500);
             }
 
+            // Update local prediction speed
+            if (state.sp !== undefined) {
+                localSpeed = state.sp;
+            }
+
             // Speed + Timer HUD
             if (state.sp !== undefined) {
                 const spd = state.sp;
@@ -1101,6 +1120,10 @@
         };
 
         // ── CONTROLS ──
+        // Pre-allocate binary buffer for turn commands (2 bytes: [0x02, dir+1])
+        const turnBuf = new Uint8Array(2);
+        turnBuf[0] = 0x02;
+
         function updateTurnDirection() {
             if (!isGameActive) return;
             const left = keysDown.has("ArrowLeft") || keysDown.has("a") || keysDown.has("A");
@@ -1108,7 +1131,10 @@
             let dir = 0;
             if (left && !right) dir = -1;
             if (right && !left) dir = 1;
-            ws.send(JSON.stringify({ type: "turn", dir }));
+            localTurnDir = dir;
+            // Send as binary (2 bytes instead of ~30 byte JSON)
+            turnBuf[1] = dir + 1; // -1→0, 0→1, 1→2
+            ws.send(turnBuf);
         }
 
         document.addEventListener("keydown", (e) => {
@@ -1203,10 +1229,10 @@
             }
             // If we only have 1 update and it's old, ensure it is committed
             if (serverUpdates.length === 1 && serverUpdates[0].t <= renderTime) {
-                 commitState(serverUpdates[0]);
+                commitState(serverUpdates[0]);
             }
 
-            // Interpolate
+            // Interpolate remote players (skip local player — handled via prediction)
             if (serverUpdates.length >= 2) {
                 const u1 = serverUpdates[0];
                 const u2 = serverUpdates[1];
@@ -1214,20 +1240,19 @@
                 const fraction = Math.max(0, Math.min(1, (renderTime - u1.t) / total));
 
                 for (let id in players) {
+                    if (id === myId) continue; // local player predicted separately
                     if (u1.p[id] && u2.p[id] && players[id].alive) {
                         const p1 = u1.p[id];
                         const p2 = u2.p[id];
 
                         // Piecewise linear interpolation along trail
-                        // Path: p1 -> [trail points] -> p2
-                        // If p2 has trail points, they happened between u1 and u2.
                         const trail = p2.t || [];
                         const points = [];
-                        points.push({x: p1.x, y: p1.y});
-                        for (let i = 0; i < trail.length; i+=2) {
-                            points.push({x: trail[i], y: trail[i+1]});
+                        points.push({ x: p1.x, y: p1.y });
+                        for (let i = 0; i < trail.length; i += 2) {
+                            points.push({ x: trail[i], y: trail[i + 1] });
                         }
-                        points.push({x: p2.x, y: p2.y});
+                        points.push({ x: p2.x, y: p2.y });
 
                         const segments = points.length - 1;
                         if (segments > 0) {
@@ -1236,7 +1261,7 @@
                             const t = val - idx;
 
                             const start = points[idx];
-                            const end = points[idx+1];
+                            const end = points[idx + 1];
 
                             players[id].x = lerp(start.x, end.x, t);
                             players[id].y = lerp(start.y, end.y, t);
@@ -1252,6 +1277,7 @@
                 // Snap to latest if we don't have future packet yet
                 const u = serverUpdates[0];
                 for (let id in players) {
+                    if (id === myId) continue; // local player predicted separately
                     if (u.p[id]) {
                         players[id].x = u.p[id].x;
                         players[id].y = u.p[id].y;
@@ -1259,12 +1285,62 @@
                     }
                 }
             }
+
+            // Local player: smooth reconciliation with server instead of hard snap
+            if (myId && players[myId] && serverUpdates.length > 0) {
+                const latest = serverUpdates[serverUpdates.length - 1];
+                if (latest.p[myId]) {
+                    const serverX = latest.p[myId].x;
+                    const serverY = latest.p[myId].y;
+                    const serverAngle = latest.p[myId].a;
+
+                    if (!predInited) {
+                        // First time: snap to server pos
+                        predX = serverX;
+                        predY = serverY;
+                        predAngle = serverAngle;
+                        predInited = true;
+                    } else {
+                        // Smoothly blend prediction toward server authority
+                        const blendFactor = 0.15;
+                        predX = lerp(predX, serverX, blendFactor);
+                        predY = lerp(predY, serverY, blendFactor);
+                        predAngle = lerpAngle(predAngle, serverAngle, blendFactor);
+                    }
+
+                    players[myId].x = predX;
+                    players[myId].y = predY;
+                    players[myId].angle = predAngle;
+                }
+            }
         }
 
         // ── MAIN DRAW LOOP ──
         function draw() {
-            const renderTime = Date.now() - INTERP_DELAY;
+            const now = Date.now();
+            const renderTime = now - INTERP_DELAY;
             updateGameState(renderTime);
+
+            // Continuous client-side prediction for local player
+            // Runs every frame independent of server updates — instant response to input
+            if (myId && players[myId] && players[myId].alive) {
+                const dt = lastPredTime ? (now - lastPredTime) / 1000 : 0;
+                lastPredTime = now;
+                // Predict based on elapsed time (frame-rate independent)
+                const ticks = Math.min(Math.round(dt * 60), 4); // cap at 4 ticks per frame
+                const p = players[myId];
+                for (let i = 0; i < ticks; i++) {
+                    p.angle += localTurnDir * LOCAL_TURN_SPEED;
+                    p.x += Math.cos(p.angle) * localSpeed;
+                    p.y += Math.sin(p.angle) * localSpeed;
+                }
+                // Keep prediction state in sync
+                predX = p.x;
+                predY = p.y;
+                predAngle = p.angle;
+            } else {
+                lastPredTime = now;
+            }
 
             // Clear
             ctx.fillStyle = "#0a0a0f";
