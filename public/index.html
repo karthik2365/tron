@@ -641,8 +641,7 @@
         <div id="roundInfo">FIRST TO 3 · STEER TO SURVIVE</div>
         <div id="scoreBoard"></div>
         <div id="countdown"></div>
-        <div id="controlsHelp">← LEFT &nbsp;&nbsp;|&nbsp;&nbsp; RIGHT →&nbsp;&nbsp;&nbsp;or&nbsp;&nbsp;&nbsp; A
-            &nbsp;&nbsp;|&nbsp;&nbsp; D</div>
+        <div id="controlsHelp">STEER WITH MOUSE &nbsp;&nbsp;|&nbsp;&nbsp; OR A / D KEYS</div>
 
         <canvas id="game" width="1400" height="900"></canvas>
 
@@ -1119,41 +1118,74 @@
             ws.send(JSON.stringify({ type: "start" }));
         };
 
-        // ── CONTROLS ──
-        // Pre-allocate binary buffer for turn commands (2 bytes: [0x02, dir+1])
+        // ── CONTROLS (Slither.io Style) ──
         const turnBuf = new Uint8Array(2);
         turnBuf[0] = 0x02;
 
+        let pointerX = CANVAS_W / 2;
+        let pointerY = CANVAS_H / 2;
+        let usingMouse = true;
+
+        // Track mouse position over the game area
+        gameArea.addEventListener("mousemove", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            pointerX = (e.clientX - rect.left) * scaleX;
+            pointerY = (e.clientY - rect.top) * scaleY;
+            usingMouse = true;
+        });
+
+        // Continuously determine turn direction
         function updateTurnDirection() {
             if (!isGameActive) return;
+
+            let dir = 0;
             const left = keysDown.has("ArrowLeft") || keysDown.has("a") || keysDown.has("A");
             const right = keysDown.has("ArrowRight") || keysDown.has("d") || keysDown.has("D");
-            let dir = 0;
-            if (left && !right) dir = -1;
-            if (right && !left) dir = 1;
-            localTurnDir = dir;
-            // Send as binary (2 bytes instead of ~30 byte JSON)
-            turnBuf[1] = dir + 1; // -1→0, 0→1, 1→2
-            ws.send(turnBuf);
+
+            if (left || right) {
+                usingMouse = false; // Keyboard overrides mouse temporarily
+                if (left && !right) dir = -1;
+                if (right && !left) dir = 1;
+            } else if (usingMouse && myId && players[myId] && players[myId].alive) {
+                // Steer towards mouse
+                const dx = pointerX - predX;
+                const dy = pointerY - predY;
+                const targetAngle = Math.atan2(dy, dx);
+
+                let angleDiff = targetAngle - predAngle;
+                if (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                if (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+                // Deadzone to prevent jitter when reaching pointer
+                const distSq = dx * dx + dy * dy;
+                if (distSq > 400) {
+                    if (angleDiff > 0.08) dir = 1;
+                    else if (angleDiff < -0.08) dir = -1;
+                }
+            }
+
+            if (dir !== localTurnDir) {
+                localTurnDir = dir;
+                turnBuf[1] = dir + 1; // -1→0, 0→1, 1→2
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(turnBuf);
+                }
+            }
         }
 
         document.addEventListener("keydown", (e) => {
             if (!isGameActive) return;
             if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(e.key)) {
                 e.preventDefault();
-                if (!keysDown.has(e.key)) {
-                    keysDown.add(e.key);
-                    updateTurnDirection();
-                }
+                keysDown.add(e.key);
             }
         });
 
         document.addEventListener("keyup", (e) => {
             if (!isGameActive) return;
-            if (keysDown.has(e.key)) {
-                keysDown.delete(e.key);
-                updateTurnDirection();
-            }
+            keysDown.delete(e.key);
         });
 
         // ── SCOREBOARD (throttled DOM updates) ──
@@ -1323,97 +1355,105 @@
 
         // ── MAIN DRAW LOOP ──
         function draw() {
-            const now = Date.now();
-            const renderTime = now - INTERP_DELAY;
-            updateGameState(renderTime);
+            try {
+                const now = Date.now();
+                const renderTime = now - INTERP_DELAY;
+                updateGameState(renderTime);
 
-            // Continuous client-side prediction for local player
-            // Runs every frame independent of server updates — instant response to input
-            if (myId && players[myId] && players[myId].alive) {
-                const dt = lastPredTime ? (now - lastPredTime) / 1000 : 0;
-                lastPredTime = now;
-                // Predict based on elapsed time (frame-rate independent)
-                const ticks = Math.min(Math.round(dt * 60), 4); // cap at 4 ticks per frame
-                const p = players[myId];
-                for (let i = 0; i < ticks; i++) {
-                    p.angle += localTurnDir * LOCAL_TURN_SPEED;
-                    p.x += Math.cos(p.angle) * localSpeed;
-                    p.y += Math.sin(p.angle) * localSpeed;
-                }
-                // Keep prediction state in sync
-                predX = p.x;
-                predY = p.y;
-                predAngle = p.angle;
-            } else {
-                lastPredTime = now;
-            }
+                // Re-evaluate mouse steering continuously
+                updateTurnDirection();
 
-            // Clear
-            ctx.fillStyle = "#0a0a0f";
-            ctx.fillRect(0, 0, 1400, 900);
-
-            // Static grid (pre-rendered, just stamp it)
-            ctx.drawImage(gridCanvas, 0, 0);
-
-            // Rebuild trail cache if needed (trim events)
-            if (trailDirty) rebuildTrailCanvas();
-
-            // Stamp cached trails
-            ctx.drawImage(trailCanvas, 0, 0);
-
-            // Draw player heads (NO shadowBlur — use pre-rendered glow image)
-            for (let id in players) {
-                const p = players[id];
-
-                if (p.alive) {
-                    const angle = p.angle || 0;
-                    const hx = p.x;
-                    const hy = p.y;
-                    const size = 7;
-
-                    // Glow image (pre-rendered, no shadowBlur per frame)
-                    const glow = getGlowImage(p.color);
-                    ctx.drawImage(glow, hx - 24, hy - 24);
-
-                    // Triangle head
-                    ctx.fillStyle = p.color;
-                    ctx.beginPath();
-                    ctx.moveTo(hx + Math.cos(angle) * size, hy + Math.sin(angle) * size);
-                    ctx.lineTo(hx + Math.cos(angle + 2.4) * size * 0.6, hy + Math.sin(angle + 2.4) * size * 0.6);
-                    ctx.lineTo(hx + Math.cos(angle - 2.4) * size * 0.6, hy + Math.sin(angle - 2.4) * size * 0.6);
-                    ctx.closePath();
-                    ctx.fill();
-
-                    // Center dot
-                    ctx.fillStyle = "#fff";
-                    ctx.beginPath();
-                    ctx.arc(hx, hy, 2, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // Name label
-                    ctx.fillStyle = p.color;
-                    ctx.font = "bold 11px 'Chakra Petch', sans-serif";
-                    ctx.textAlign = "center";
-                    ctx.fillText(id === myId ? "YOU" : p.name, hx, hy - 16);
+                // Continuous client-side prediction for local player
+                // Runs every frame independent of server updates — instant response to input
+                if (myId && players[myId] && players[myId].alive) {
+                    const dt = lastPredTime ? (now - lastPredTime) / 1000 : 0;
+                    lastPredTime = now;
+                    // Predict based on elapsed time (frame-rate independent)
+                    const ticks = Math.min(Math.round(dt * 60), 4); // cap at 4 ticks per frame
+                    const p = players[myId];
+                    for (let i = 0; i < ticks; i++) {
+                        p.angle += localTurnDir * LOCAL_TURN_SPEED;
+                        p.x += Math.cos(p.angle) * localSpeed;
+                        p.y += Math.sin(p.angle) * localSpeed;
+                    }
+                    // Keep prediction state in sync
+                    predX = p.x;
+                    predY = p.y;
+                    predAngle = p.angle;
                 } else {
-                    // Death X marker
-                    ctx.globalAlpha = 0.4;
-                    ctx.strokeStyle = p.color;
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(p.x - 5, p.y - 5);
-                    ctx.lineTo(p.x + 5, p.y + 5);
-                    ctx.moveTo(p.x + 5, p.y - 5);
-                    ctx.lineTo(p.x - 5, p.y + 5);
-                    ctx.stroke();
-                    ctx.globalAlpha = 1;
+                    lastPredTime = now;
                 }
-            }
 
-            // Border
-            ctx.strokeStyle = "rgba(255, 140, 0, 0.15)";
-            ctx.lineWidth = 1;
-            ctx.strokeRect(0, 0, 1400, 900);
+                // Clear
+                ctx.fillStyle = "#0a0a0f";
+                ctx.fillRect(0, 0, 1400, 900);
+
+                // Static grid (pre-rendered, just stamp it)
+                ctx.drawImage(gridCanvas, 0, 0);
+
+                // Rebuild trail cache if needed (trim events)
+                if (trailDirty) rebuildTrailCanvas();
+
+                // Stamp cached trails
+                ctx.drawImage(trailCanvas, 0, 0);
+
+                // Draw player heads (NO shadowBlur — use pre-rendered glow image)
+                for (let id in players) {
+                    const p = players[id];
+
+                    if (p.alive) {
+                        const angle = p.angle || 0;
+                        const hx = p.x;
+                        const hy = p.y;
+                        const size = 7;
+
+                        // Glow image (pre-rendered, no shadowBlur per frame)
+                        const glow = getGlowImage(p.color);
+                        ctx.drawImage(glow, hx - 24, hy - 24);
+
+                        // Triangle head
+                        ctx.fillStyle = p.color;
+                        ctx.beginPath();
+                        ctx.moveTo(hx + Math.cos(angle) * size, hy + Math.sin(angle) * size);
+                        ctx.lineTo(hx + Math.cos(angle + 2.4) * size * 0.6, hy + Math.sin(angle + 2.4) * size * 0.6);
+                        ctx.lineTo(hx + Math.cos(angle - 2.4) * size * 0.6, hy + Math.sin(angle - 2.4) * size * 0.6);
+                        ctx.closePath();
+                        ctx.fill();
+
+                        // Center dot
+                        ctx.fillStyle = "#fff";
+                        ctx.beginPath();
+                        ctx.arc(hx, hy, 2, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Name label
+                        ctx.fillStyle = p.color;
+                        ctx.font = "bold 11px 'Chakra Petch', sans-serif";
+                        ctx.textAlign = "center";
+                        ctx.fillText(id === myId ? "YOU" : p.name, hx, hy - 16);
+                    } else {
+                        // Death X marker
+                        ctx.globalAlpha = 0.4;
+                        ctx.strokeStyle = p.color;
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x - 5, p.y - 5);
+                        ctx.lineTo(p.x + 5, p.y + 5);
+                        ctx.moveTo(p.x + 5, p.y - 5);
+                        ctx.lineTo(p.x - 5, p.y + 5);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+                }
+
+                // Border
+                ctx.strokeStyle = "rgba(255, 140, 0, 0.15)";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(0, 0, 1400, 900);
+
+            } catch (err) {
+                console.error("Draw loop error:", err);
+            }
 
             requestAnimationFrame(draw);
         }
