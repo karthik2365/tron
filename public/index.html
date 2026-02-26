@@ -1301,11 +1301,23 @@
                         predAngle = serverAngle;
                         predInited = true;
                     } else {
-                        // Smoothly blend prediction toward server authority
-                        const blendFactor = 0.15;
-                        predX = lerp(predX, serverX, blendFactor);
-                        predY = lerp(predY, serverY, blendFactor);
-                        predAngle = lerpAngle(predAngle, serverAngle, blendFactor);
+                        // Position: correct quickly so trails stay accurate
+                        const posFactor = 0.3;
+                        predX = lerp(predX, serverX, posFactor);
+                        predY = lerp(predY, serverY, posFactor);
+
+                        // Angle: trust local input heavily to avoid turn lag
+                        // Only blend angle gently — local turning must feel instant
+                        let angleDiff = serverAngle - predAngle;
+                        if (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                        if (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                        // If difference is small (server caught up), trust local fully
+                        if (Math.abs(angleDiff) < 0.15) {
+                            // Server and prediction agree — no correction needed
+                        } else {
+                            // Gentle nudge toward server (very low factor to avoid fighting input)
+                            predAngle = lerpAngle(predAngle, serverAngle, 0.08);
+                        }
                     }
 
                     players[myId].x = predX;
