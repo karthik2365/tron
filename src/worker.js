@@ -70,6 +70,21 @@ export class GameServer {
         }
 
         ws.addEventListener("message", (event) => {
+            // Fast path: binary turn commands (2 bytes: [0x02, dir+1])
+            if (event.data instanceof ArrayBuffer && event.data.byteLength === 2) {
+                const bytes = new Uint8Array(event.data);
+                if (bytes[0] === 0x02) {
+                    const room = this.rooms[session.room];
+                    if (!room) return;
+                    const p = room.players[session.id];
+                    if (!p || !p.alive) return;
+                    const dir = bytes[1] - 1; // 0→-1, 1→0, 2→1
+                    if (dir === -1 || dir === 0 || dir === 1) {
+                        p.turning = dir;
+                    }
+                    return;
+                }
+            }
             let data;
             try { data = JSON.parse(event.data); } catch (e) { return; }
             this.handleMessage(session, data);
